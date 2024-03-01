@@ -21,7 +21,7 @@ async def get_item(item_id: int):
     else:
         return HTTPException(status_code=404, detail="Item not found")
     
-    # get items with limit
+# get items with limit
 @app.get("/items/")
 async def get_items(limit: int = 10):
     return items[0:limit]
