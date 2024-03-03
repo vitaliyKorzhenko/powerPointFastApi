@@ -8,7 +8,7 @@ from io import BytesIO
 
 app = FastAPI()
 
-@app.get("api/")
+@app.get("/")
 def read_root():
     return {"Hello": "API Service is running"}
 
