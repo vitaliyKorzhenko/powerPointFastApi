@@ -20,6 +20,7 @@ class BucketManager:
         #add to os environment credentials
         os.environ['AWS_ACCESS_KEY_ID'] = self.aws_access_key_id
         os.environ['AWS_SECRET_ACCESS_KEY'] = self.aws_secret_access_key
+        os.environ['AWS_DEFAULT_REGION'] = 'us-east-2'
         #create s3 resource
         self.s3 = boto3.resource('s3')
         self.bucket = self.s3.Bucket(self.bucket_name)
