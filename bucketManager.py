@@ -22,7 +22,7 @@ class BucketManager:
         os.environ['AWS_SECRET_ACCESS_KEY'] = self.aws_secret_access_key
         os.environ['AWS_DEFAULT_REGION'] = 'us-east-2'
         #create s3 resource
-        self.s3 = boto3.resource('s3')
+        self.s3 = boto3.resource('s3', region_name='us-east-2')
         self.bucket = self.s3.Bucket(self.bucket_name)
         print(self.bucket_name)
     
