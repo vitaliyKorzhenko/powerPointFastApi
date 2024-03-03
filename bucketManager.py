@@ -15,14 +15,16 @@ class BucketManager:
         #get data for aws configuration
         self.aws_access_key_id = config['aws']['aws_access_key_id']
         self.aws_secret_access_key = config['aws']['aws_secret_access_key']
+        self.aws_region = config['aws']['aws_region']
         #set bucket name
         self.bucket_name = config['s3']['bucket']
         #add to os environment credentials
         os.environ['AWS_ACCESS_KEY_ID'] = self.aws_access_key_id
         os.environ['AWS_SECRET_ACCESS_KEY'] = self.aws_secret_access_key
-        os.environ['AWS_DEFAULT_REGION'] = 'us-east-2'
+        os.environ['AWS_DEFAULT_REGION'] = self.aws_region
+        os.environ['AWS_REGION'] = self.aws_region
         #create s3 resource
-        self.s3 = boto3.resource('s3', region_name='us-east-2')
+        self.s3 = boto3.resource('s3', region_name=self.aws_region)
         self.bucket = self.s3.Bucket(self.bucket_name)
         print(self.bucket_name)
     

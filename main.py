@@ -130,7 +130,6 @@ async def test():
      configPath = 'config.ini'
      config = configparser.ConfigParser()
      config.read(configPath)
-     print(config.sections())
      bucket = BucketManager()
      bucketInfo = bucket.get_bucket_info()
      print(bucketInfo)
