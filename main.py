@@ -20,16 +20,22 @@ def parse_pptx(prs):
         for shape in slide.shapes:
             if shape.shape_type == 13:
                 #print all shape attributes
-                print(shape.name)
-                print(shape.shape_type)
+                #print(shape);
+                #pring all shape properties
+                print(dir(shape))
+                #file name without extension
+                name = shape.image.filename.split('.')[0]
+                
                 images.append({
                     "name": shape.name,
                     "width": shape.width,
-                    "height": shape.height
+                    "height": shape.height,
+                    "media_uniq_name": name + str(shape.shape_id) + '.' + shape.image.ext
+                    
                 })
     return images
 
-def replace_image_in_presenation(prs, old_image_name, new_image_stream):
+def replace_image_in_presenation(prs, media_uniq_name, new_image_stream):
     print('new image path')
     imageFind = False
     for slide in prs.slides:
@@ -37,9 +43,14 @@ def replace_image_in_presenation(prs, old_image_name, new_image_stream):
             print(shape.shape_type)
             print(shape.name)
             # print(old_image_name)
-            if shape.name == old_image_name and shape.shape_type == 13:
+            if shape.shape_type == 13:
                 print('found image')
                 print(shape.name)
+                name = shape.image.filename.split('.')[0]
+                current_uniq_name = name + str(shape.shape_id) + '.' + shape.image.ext
+                print(current_uniq_name)
+                print('Find image', media_uniq_name);
+            if current_uniq_name == media_uniq_name:
                 slide_part, rId = shape.part, shape._element.blip_rId
                 image_part = slide_part.related_part(rId)    
                 image_part.blob = new_image_stream.read()
@@ -55,8 +66,8 @@ def replace_image_in_presenation(prs, old_image_name, new_image_stream):
 async def parse_presentation(name: str):
     print('START')
     bucket = BucketManager()
-    if (bucket.file_exists('templates', name)):
-        file = bucket.getObjectBody('templates/' + name)
+    if (bucket.file_exists('pptx', name)):
+        file = bucket.getObjectBody('pptx/' + name)
         file_stream = BytesIO(file)
         presentation = pptx.Presentation(file_stream)
         images = parse_pptx(presentation)
@@ -89,18 +100,20 @@ async def get_results():
 
 #replace image in presentation and save it to results (image get from pictures folder)
 @app.post("/presentation/replaceImage")
-async def replace_image(old_image_name: str, new_image_name: str, presentation_name: str):
+async def replace_image(media_unique_name: str, assets_file: str, presentation_name: str):
+    templatesBucket = 'pptx'
+    imageBucket = 'img'
     bucket = BucketManager()
-    if (bucket.file_exists('templates', presentation_name)):
-        file = bucket.getObjectBody('templates/' + presentation_name)
+    if (bucket.file_exists(templatesBucket, presentation_name)):
+        file = bucket.getObjectBody(templatesBucket + '/' + presentation_name)
         file_stream = BytesIO(file)
         presentation = pptx.Presentation(file_stream)
-        if (bucket.file_exists('pictures', new_image_name)):
-            image = bucket.getObjectBody('pictures/' + new_image_name)
+        if (bucket.file_exists(imageBucket, assets_file)):
+            image = bucket.getObjectBody(imageBucket + '/' + assets_file)
             if (image == None):
-                return HTTPException(status_code=404, detail="Picture not found")
+                return HTTPException(status_code=404, detail="Image not found")
             image_stream = BytesIO(image)
-            result_prs = replace_image_in_presenation(presentation, old_image_name, image_stream)
+            result_prs = replace_image_in_presenation(presentation, media_unique_name, image_stream)
             if (result_prs == None):
                 return HTTPException(status_code=404, detail="Image not found")
             else:
