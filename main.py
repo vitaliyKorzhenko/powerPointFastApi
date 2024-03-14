@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 from bucketManager import BucketManager
 import configparser
 from pptx import Presentation
@@ -98,44 +99,63 @@ async def get_results():
     results = bucket.get_files('results')
     return results
 
+
+#class for body params
+class PresentationParams(BaseModel):
+    presentation: str
+    #replacemnt array object media_unique_name: string, assets_file: string
+    replacements: list
 #replace image in presentation and save it to results (image get from pictures folder)
+    resultFileName: str
+
+
+
+
 @app.post("/presentation/replaceImage")
-async def replace_image(media_unique_name: str, assets_file: str, presentation_name: str):
+async def replace_image(presentationInfo: PresentationParams):
+    print('START REPLACE IMAGE', presentationInfo)
     templatesBucket = 'pptx'
     imageBucket = 'img'
+    presentation_name = presentationInfo.presentation
     bucket = BucketManager()
     if (bucket.file_exists(templatesBucket, presentation_name)):
         file = bucket.getObjectBody(templatesBucket + '/' + presentation_name)
         file_stream = BytesIO(file)
         presentation = pptx.Presentation(file_stream)
-        if (bucket.file_exists(imageBucket, assets_file)):
-            image = bucket.getObjectBody(imageBucket + '/' + assets_file)
-            if (image == None):
-                return HTTPException(status_code=404, detail="Image not found")
-            image_stream = BytesIO(image)
-            result_prs = replace_image_in_presenation(presentation, media_unique_name, image_stream)
-            if (result_prs == None):
-                return HTTPException(status_code=404, detail="Image not found")
-            else:
-                #save result presentation to results folder
-                newName = presentation_name.split('.')[0] + '_result.pptx'
-                print(newName)
-                #save to results folder
-                #bucket.put_object('results/' + newName, result_prs);
-                result_stream = BytesIO()
-                result_prs.save(result_stream)
-                result_stream.seek(0)
-                bucket.put_object(data=result_stream.read(), key='results/' + newName)
+        newName = presentationInfo.resultFileName + '.pptx'
 
-                #bucket.put_object('results/' + newName, result_stream.read())
-                return {
-                    "status": "success",
-                    "path": "results/" + newName
-                    }
+        #use for loop to replace all images in replacement array
+        result_stream = BytesIO()
+        print("BEFORE LOOP")
+    for item in presentationInfo.replacements:
+        print("ITEM", item)
+        if (item['media_unique_name'] != None and item['assets_file'] != None):
+            print("GO GO GO", item['media_unique_name'], item['assets_file'])
+            if (bucket.file_exists(imageBucket, item["assets_file"])):
+                print("exist image")
+                image = bucket.getObjectBody(imageBucket + '/' + item['assets_file'])
+                if (image == None):
+                    return HTTPException(status_code=404, detail="Image not found")
+                image_stream = BytesIO(image)
+                result_prs = replace_image_in_presenation(presentation, item['media_unique_name'], image_stream)
+                if (result_prs == None):
+                    return HTTPException(status_code=404, detail="Image not found")
+                else:
+                    #save result presentation to results folder
+                    print(newName)
+                    #save to results folder
+                    #bucket.put_object('results/' + newName, result_prs);
+                    result_prs.save(result_stream)
+                    result_stream.seek(0)
         else:
             return HTTPException(status_code=404, detail="Image not found")
+    
+        bucket.put_object(data=result_stream.read(), key='results/' + newName)
+        return {"status": "success", "file": newName}
+
     else:
         return HTTPException(status_code=404, detail="File not found")
+
    
 @app.get("/presentation/test")
 async def test():
