@@ -89,14 +89,14 @@ async def copy_presentation(name: str):
 @app.get("/presentation/getTemplates")
 async def get_templates():
     bucket = BucketManager()
-    templates = bucket.get_files('templates')
+    templates = bucket.get_files('pptx')
     return templates
 
 #get files from results (folder results) 
 @app.get("/presentation/getResults")
 async def get_results():
     bucket = BucketManager()
-    results = bucket.get_files('results')
+    results = bucket.get_files('pptx')
     return results
 
 
@@ -150,7 +150,7 @@ async def replace_image(presentationInfo: PresentationParams):
         else:
             return HTTPException(status_code=404, detail="Image not found")
     
-        bucket.put_object(data=result_stream.read(), key='results/' + newName)
+        bucket.put_object(data=result_stream.read(), key='pptx/' + newName)
         return {"status": "success", "file": newName}
 
     else:
