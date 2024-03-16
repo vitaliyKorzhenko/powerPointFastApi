@@ -127,3 +127,11 @@ class BucketManager:
     #save file to results folder
     def saveFileToResults(self, fileName, data):
         return self.s3.Object(self.bucket_name, "results/" + fileName).put(Body=data)
+    
+    #add public access to file
+    def addPublicAccess(self, key):
+        return self.s3.ObjectAcl(self.bucket_name, key).put(ACL='public-read')
+    
+    #get public url for file
+    def getPublicUrl(self, key):
+        return f"https://{self.bucket_name}.s3.amazonaws.com/{key}"

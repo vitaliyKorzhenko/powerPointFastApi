@@ -149,8 +149,12 @@ async def replace_image(presentationInfo: PresentationParams):
         print("before loop");
         presentation.save(result_stream)
         result_stream.seek(0)
-        bucket.put_object(data=result_stream.read(), key='pptx/' + newName)
-        return {"status": "success", "file": newName}
+        resultKey = 'pptx/' + newName
+        bucket.put_object(data=result_stream.read(), key=resultKey)
+        bucket.addPublicAccess(resultKey)
+        publicUrl = bucket.getPublicUrl(resultKey)
+
+        return {"status": "success", "file": newName, "url": publicUrl}
 
     else:
         return HTTPException(status_code=404, detail="Presentation file not found")
