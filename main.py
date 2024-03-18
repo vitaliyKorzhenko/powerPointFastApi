@@ -232,3 +232,13 @@ async def replace_image(presentationInfo: PresentationParams):
     else:
         return HTTPException(status_code=404, detail="Presentation file not found")
 
+
+#return presentation by name
+@app.get("/presentation/getPresentation")
+async def get_presentation(name: str):
+    bucket = BucketManager()
+    if (bucket.file_exists('pptx', name)):
+        file = bucket.getObjectBody('pptx/' + name)
+        return StreamingResponse(BytesIO(file), media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation', headers={'Content-Disposition': f'attachment; filename="{name}"'})
+    else:
+        return HTTPException(status_code=404, detail="File not found")

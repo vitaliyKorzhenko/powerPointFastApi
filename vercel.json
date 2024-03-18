@@ -1,15 +1,5 @@
 {
   "version": 2,
   "builds": [{ "src": "main.py", "use": "@vercel/python" }],
-  "routes": [{ "src": "/(.*)", "dest": "main.py" }],
-  "functions": {
-    "main.py": {
-      "maxDuration": 50,
-      "timeout": {
-        "duration": 5,
-        "idle": 5
-
-      }
-    }
-  }
+  "routes": [{ "src": "/(.*)", "dest": "main.py" }]
 }
