@@ -1,11 +1,12 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from bucketManager import BucketManager
-import configparser
 from pptx import Presentation
 import pptx
 from PIL import Image
 from io import BytesIO
+from fastapi.responses import StreamingResponse
+
 
 app = FastAPI()
 
@@ -31,8 +32,15 @@ def parse_pptx(prs):
                     "name": shape.name,
                     "width": shape.width,
                     "height": shape.height,
-                    "media_uniq_name": name + str(shape.shape_id) + '.' + shape.image.ext
-                    
+                    "shape_id": shape.shape_id, 
+                    "shape_type": shape.shape_type,
+                    "filename": shape.image.filename,
+                    "ext": shape.image.ext,
+                    "left": shape.left,
+                    "top": shape.top,
+                    "imageSize": shape.image.size,
+                    "sha1": shape.image.sha1,
+
                 })
     return images
 
@@ -71,15 +79,7 @@ async def parse_presentation(name: str):
     else:
         return HTTPException(status_code=404, detail="File not found")
 
-#copy presentation from templates to results
-@app.post("/presentation/copy")
-async def copy_presentation(name: str):
-    bucket = BucketManager()
-    if (bucket.file_exists('templates', name)):
-        bucket.copy_file('templates', name, 'results', name)
-        return {"status": "success"}
-    else:
-        return HTTPException(status_code=404, detail="File not found")
+
     
 @app.get("/presentation/getTemplates")
 async def get_templates():
@@ -95,6 +95,14 @@ async def get_results():
     return results
 
 
+
+#get thumbnails from thumbnails folder
+@app.get("/presentation/getThumbnails")
+async def get_thumbnails():
+    bucket = BucketManager()
+    thumbnails = bucket.get_files('thumbnails')
+    return thumbnails
+
 #class for body params
 class PresentationParams(BaseModel):
     presentation: str
@@ -104,6 +112,15 @@ class PresentationParams(BaseModel):
     resultFileName: str
 
 
+class ThumbnailsParams(BaseModel):
+    presentation: str
+
+
+    
+
+
+
+    
 
 
 @app.post("/presentation/replaceImage")
@@ -153,11 +170,65 @@ async def replace_image(presentationInfo: PresentationParams):
         bucket.put_object(data=result_stream.read(), key=resultKey)
         bucket.addPublicAccess(resultKey)
         publicUrl = bucket.getPublicUrl(resultKey)
-
-        return {"status": "success", "file": newName, "url": publicUrl}
+        return {
+            "status": "success", 
+            "file": newName, 
+            "url": publicUrl,
+            }
 
     else:
         return HTTPException(status_code=404, detail="Presentation file not found")
 
 
-   
+
+
+@app.post("/presentation/generateNewPresentation")
+async def replace_image(presentationInfo: PresentationParams):
+    print('START REPLACE IMAGE', presentationInfo)
+    templatesBucket = 'pptx'
+    imageBucket = 'img'
+    presentation_name = presentationInfo.presentation
+    bucket = BucketManager()
+    
+    if bucket.file_exists(templatesBucket, presentation_name):
+        file = bucket.getObjectBody(templatesBucket + '/' + presentation_name)
+        file_stream = BytesIO(file)
+        presentation = pptx.Presentation(file_stream)
+        newName = presentationInfo.resultFileName + '.pptx'
+
+        result_stream = BytesIO()
+
+        for item in presentationInfo.replacements:
+            if item.get('media_unique_name') and item.get('assets_file'):
+                print("GO GO GO", item['media_unique_name'], item['assets_file'])
+                if bucket.file_exists(imageBucket, item["assets_file"]):
+                    image = bucket.getObjectBody(imageBucket + '/' + item['assets_file'])
+                    if not image:
+                        return HTTPException(status_code=404, detail="Image not found")
+                    print("start create image stream")
+                    byteImgIO = BytesIO(image)
+                    byteImgIO.seek(0)
+                    with byteImgIO as image_stream:
+                        result_prs = replace_image_in_presenation(presentation, item['media_unique_name'], image_stream)
+                        if not result_prs:
+                            return HTTPException(status_code=404, detail="Image not found")
+                        else:
+                            # Update presentation
+                            print("UPDATE PRESENTATION")
+                            presentation = result_prs
+                            #delete byteImgIO
+                    
+            else:
+                return HTTPException(status_code=404, detail="Invalid replacement item")
+
+        # Save updated presentation to results folder
+        print("before loop");
+        presentation.save(result_stream)
+        result_stream.seek(0)
+        return StreamingResponse(BytesIO(result_stream.read()), media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation', headers={'Content-Disposition': f'attachment; filename="{newName}"'})
+
+
+
+    else:
+        return HTTPException(status_code=404, detail="Presentation file not found")
+
