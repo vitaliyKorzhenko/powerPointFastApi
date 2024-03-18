@@ -4,8 +4,12 @@
   "routes": [{ "src": "/(.*)", "dest": "main.py" }],
   "functions": {
     "main.py": {
-      "maxDuration": 300,
-      "timeout": 90
+      "maxDuration": 50,
+      "timeout": {
+        "duration": 5,
+        "idle": 5
+
+      }
     }
   }
 }
