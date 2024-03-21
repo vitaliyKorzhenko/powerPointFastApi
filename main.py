@@ -6,9 +6,30 @@ import pptx
 from PIL import Image
 from io import BytesIO
 from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 
-
+#initialize app
 app = FastAPI()
+
+#add cors   
+origins = [
+    "http://pptx.slideedu.com",
+    "https://pptx.slideedu.com",
+    "http://pptx.slideedu.com:8000",
+    "https://pptx.slideedu.com:8000",
+    "http://localhost",
+    "http://localhost:8000",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 
 @app.get("/")
 def read_root():
