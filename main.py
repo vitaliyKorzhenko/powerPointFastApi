@@ -19,6 +19,9 @@ origins = [
     "https://pptx.slideedu.com:8000",
     "http://localhost",
     "http://localhost:8000",
+    "http://159.203.124.0",
+    "http://159.203.124.0:8000",
+    
 ]
 
 app.add_middleware(
@@ -36,20 +39,47 @@ def read_root():
     return {"Hello": "API Service is running"}
 
 
+
+
+
+
+def print_rel_for_slide(slide):
+    relathionships = slide.rels
+
+    for rel in relathionships:
+        print("Отношение:")
+        print("  Идентификатор отношения:", rel.rId)
+        print("  Тип отношения:", rel.reltype)
+        print("  Целевой URI:", rel.target_ref)
+        print("  Целевой части:", rel.target_part)
+
+
+def find_media_info_by_shape(shape, currentrId):
+    print('find_media_info_by_shape', currentrId);
+    for rel in shape.part.rels.values():
+        print (rel.target_ref)
+        print(rel.rId)
+        if rel.rId == currentrId:
+            media_name = rel.target_ref.split('/')[-1]
+            return media_name
+    return None;
+
 def parse_pptx(prs):
     print('START')
     images = []
     for slide in prs.slides:
         for shape in slide.shapes:
             if shape.shape_type == 13:
-                #print all shape attributes
-                #print(shape);
-                #pring all shape properties
-                print(dir(shape))
-                #file name without extension
-                name = shape.image.filename.split('.')[0]
-                
+                currentrId = shape._element.blip_rId;
+                mediaName = find_media_info_by_shape(shape, currentrId)
+                if mediaName:
+                    print('mediaName', mediaName)
+                else: 
+                    print('mediaName', 'not found')
+
                 images.append({
+                    "media_name": mediaName,
+                    "rId": currentrId,
                     "name": shape.name,
                     "width": shape.width,
                     "height": shape.height,
@@ -70,12 +100,10 @@ def replace_image_in_presenation(prs, media_uniq_name, new_image_stream):
         for shape in slide.shapes:
             # print(old_image_name)
             if shape.shape_type == 13:
-                name = shape.image.filename.split('.')[0]
-                current_uniq_name = name + str(shape.shape_id) + '.' + shape.image.ext
-            if current_uniq_name == media_uniq_name:
-                print('Find REPLACE IMAGE', media_uniq_name);
+                mediaName = find_media_info_by_shape(shape, shape._element.blip_rId)
+            if mediaName and mediaName == media_uniq_name:
+                print('Find REPLACE IMAGE', media_uniq_name, new_image_stream);
                 try:
-                    x = 5;
                     slide_part, rId = shape.part, shape._element.blip_rId
                     image_part = slide_part.related_part(rId)
                     new_image_stream.seek(0) 
