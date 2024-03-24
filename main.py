@@ -7,7 +7,8 @@ from PIL import Image
 from io import BytesIO
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-
+from urllib.parse import unquote
+import requests
 #initialize app
 app = FastAPI()
 
@@ -280,6 +281,75 @@ async def replace_image(presentationInfo: PresentationParams):
 
     else:
         return HTTPException(status_code=404, detail="Presentation file not found")
+
+
+
+def download_file(url):
+    """
+    Downloads a file from the given URL and saves it with the specified filename.
+    
+    :param url: The URL of the file to download.
+    :param filename: The name under which the file will be saved.
+    :return: The file stream if successful, or None in case of error.
+    """
+    try:
+        # Request the file content from the URL
+        response = requests.get(url)
+
+        if response.status_code == 200:
+            # Save the file content
+            file_stream = BytesIO(response.content)
+            return file_stream
+        else:
+            print("Error downloading file. Error code:", response.status_code)
+            return None
+
+    except Exception as e:
+        print("Error:", e)
+        return None
+
+@app.post("/presentation/generateNewPresentationUseUrl")
+async def generateNewPresentationUseUrl(presentationInfo: PresentationParams):
+    print('START REPLACE IMAGE', presentationInfo)
+    templatesBucket = 'pptx'
+    imageBucket = 'img'
+    presentation_url = presentationInfo.presentation
+    bucket = BucketManager()
+    file_stream = download_file(presentation_url)
+    if not file_stream:
+        return HTTPException(status_code=404, detail="Presentation file not found")
+    presentation = pptx.Presentation(file_stream)
+    newName = presentationInfo.resultFileName + '.pptx'
+    result_stream = BytesIO()
+    for item in presentationInfo.replacements:
+            if item.get('media_unique_name') and item.get('assets_file'):
+                print("GO GO GO", item['media_unique_name'], item['assets_file'])
+                if bucket.file_exists(imageBucket, item["assets_file"]):
+                    image = bucket.getObjectBody(imageBucket + '/' + item['assets_file'])
+                    if not image:
+                        return HTTPException(status_code=404, detail="Image not found")
+                    print("start create image stream")
+                    byteImgIO = BytesIO(image)
+                    byteImgIO.seek(0)
+                    with byteImgIO as image_stream:
+                        result_prs = replace_image_in_presenation(presentation, item['media_unique_name'], image_stream)
+                        if not result_prs:
+                            return HTTPException(status_code=404, detail="Image not found")
+                        else:
+                            # Update presentation
+                            print("UPDATE PRESENTATION")
+                            presentation = result_prs
+                            #delete byteImgIO
+                    
+            else:
+                return HTTPException(status_code=404, detail="Invalid replacement item")
+
+        # Save updated presentation to results folder
+    print("before loop");
+    presentation.save(result_stream)
+    result_stream.seek(0)
+    return StreamingResponse(BytesIO(result_stream.read()), media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation', headers={'Content-Disposition': f'attachment; filename="{newName}"'})
+
 
 
 #return presentation by name
