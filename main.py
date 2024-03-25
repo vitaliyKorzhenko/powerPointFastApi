@@ -1,3 +1,4 @@
+import re
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from bucketManager import BucketManager
@@ -9,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from urllib.parse import unquote
 import requests
+from pathvalidate import replace_symbol, sanitize_filename
 #initialize app
 app = FastAPI()
 
@@ -98,6 +100,7 @@ def parse_pptx(prs):
 
 def replace_image_in_presenation(prs, media_uniq_name, new_image_stream):
     for slide in prs.slides:
+        mediaName = None
         for shape in slide.shapes:
             # print(old_image_name)
             if shape.shape_type == 13:
@@ -308,18 +311,19 @@ def download_file(url):
         print("Error:", e)
         return None
 
+
+                                   
 @app.post("/presentation/generateNewPresentationUseUrl")
 async def generateNewPresentationUseUrl(presentationInfo: PresentationParams):
     print('START REPLACE IMAGE', presentationInfo)
-    templatesBucket = 'pptx'
     imageBucket = 'img'
     presentation_url = presentationInfo.presentation
     bucket = BucketManager()
     file_stream = download_file(presentation_url)
     if not file_stream:
         return HTTPException(status_code=404, detail="Presentation file not found")
+    print("fileSTREAM NOT NONE");
     presentation = pptx.Presentation(file_stream)
-    newName = presentationInfo.resultFileName + '.pptx'
     result_stream = BytesIO()
     for item in presentationInfo.replacements:
             if item.get('media_unique_name') and item.get('assets_file'):
@@ -348,7 +352,11 @@ async def generateNewPresentationUseUrl(presentationInfo: PresentationParams):
     print("before loop");
     presentation.save(result_stream)
     result_stream.seek(0)
-    return StreamingResponse(BytesIO(result_stream.read()), media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation', headers={'Content-Disposition': f'attachment; filename="{newName}"'})
+    cleanedName = replace_symbol(presentationInfo.resultFileName) + '.pptx'
+    resultName = re.sub(r'[^\x00-\x7f]',r'', cleanedName) 
+    print("RESULT CLEANED", resultName);
+
+    return StreamingResponse(BytesIO(result_stream.read()), media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation', headers={'Content-Disposition': f'attachment; filename="{resultName}"'})
 
 
 
