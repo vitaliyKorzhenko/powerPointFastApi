@@ -205,15 +205,19 @@ def replace_image_in_presentation(prs, media_uniq_name, new_image_stream):
                             
                             # Save the resized image to a byte stream
                             new_image_stream_resized = BytesIO()
-                            img_resized.save(new_image_stream_resized, format="PNG")
-                            new_image_stream_resized.seek(0)
-                            
-                            # Replace the image content
+                            img_resized.save(new_image_stream_resized, format='PNG')                           
+                            width_in_inches = resized_width / 96  # Предполагаемое разрешение экрана в PPI (96 PPI - стандартное разрешение экрана для PowerPoint)
+                            height_in_inches = resized_height / 96
+
+                            # Устанавливаем новый размер формы
+                            shape.width = Inches(width_in_inches)
+                            shape.height = Inches(height_in_inches)
+                            # Replace the image in the presentation
                             slide_part, rId = shape.part, shape._element.blip_rId
                             image_part = slide_part.related_part(rId)
-                            new_image_stream_resized.seek(0)
-                            image_part.blob = new_image_stream_resized.read()
+                            image_part.blob = new_image_stream_resized.getvalue()
                             new_image_stream_resized.close()
+
                             print('Изображение успешно заменено')
                     except Exception as e:
                         print('Ошибка:', e)
