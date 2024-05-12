@@ -179,6 +179,7 @@ def replace_image_in_presentation(prs, media_uniq_name, new_image_stream):
         for shape in slide.shapes:
             if shape.shape_type == 13:  # Check if shape is an image
                 media_name = find_media_info_by_shape(shape, shape._element.blip_rId)
+                print('MEDIA NAME', media_name, media_uniq_name);
                 if media_name and media_name == media_uniq_name:
                     print('Найдено изображение для замены:', media_uniq_name)
                     try:
@@ -227,7 +228,25 @@ def replace_image_in_presentation(prs, media_uniq_name, new_image_stream):
 
 
 
-
+def replace_image_background_in_presentation_withoutResize (prs, media_uniq_name, new_image_stream): 
+    print('#REPLACE IMAGE BACKGROUND IN PRESENTATION WITHOUT RESIZE');
+    for slide in prs.slides:
+        for shape in slide.shapes:
+            if shape.shape_type == 13:  # Check if shape is an image
+                media_name = find_media_info_by_shape(shape, shape._element.blip_rId)
+                print('MEDIA NAME', media_name, media_uniq_name);
+                if media_name and media_name == media_uniq_name:
+                    print('Найдено изображение для замены:', media_uniq_name)
+                    try:
+                        # Replace the image in the presentation
+                        slide_part, rId = shape.part, shape._element.blip_rId
+                        image_part = slide_part.related_part(rId)
+                        image_part.blob = new_image_stream.getvalue()
+                        print('Изображение успешно заменено')
+                    except Exception as e:
+                        print('Ошибка:', e)
+                    break
+    return prs
 
 
 
@@ -361,7 +380,10 @@ async def generateNewPresentationUseUrl(presentationInfo: PresentationParams):
                     byteImgIO = BytesIO(image)
                     byteImgIO.seek(0)
                     with byteImgIO as image_stream:
-                        result_prs = replace_image_in_presentation(presentation, item['media_unique_name'], image_stream)
+                        if item["type"] == "background":
+                            result_prs = replace_image_background_in_presentation_withoutResize(presentation, item['media_unique_name'], image_stream)
+                        else:    
+                            result_prs = replace_image_in_presentation(presentation, item['media_unique_name'], image_stream)
                         if not result_prs:
                             return HTTPException(status_code=404, detail="Image not found")
                         else:
