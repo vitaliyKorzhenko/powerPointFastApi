@@ -160,10 +160,10 @@ def resize_image_to_fit(new_image_width, new_image_height, width_in_presentation
     # Determine the dimension to scale by
     if new_image_aspect_ratio > target_aspect_ratio:
         # New image is wider than target size, scale based on width
-        scale_factor = width_in_presentation / new_image_width
+        scale_factor =  width_in_presentation / new_image_width
     else:
         # New image is taller than target size, scale based on height
-        scale_factor = height_in_presentation / new_image_height
+        scale_factor =  height_in_presentation / new_image_height
 
     # Apply scale factor to both dimensions to maintain aspect ratio
     target_width = int(new_image_width * scale_factor)
@@ -179,45 +179,64 @@ def replace_image_in_presentation(prs, media_uniq_name, new_image_stream):
         for shape in slide.shapes:
             if shape.shape_type == 13:  # Check if shape is an image
                 media_name = find_media_info_by_shape(shape, shape._element.blip_rId)
-                print('MEDIA NAME', media_name, media_uniq_name);
+                #print('MEDIA NAME', media_name, media_uniq_name);
                 if media_name and media_name == media_uniq_name:
                     print('Найдено изображение для замены:', media_uniq_name)
                     try:
                         # Get dimensions of the original image in the presentation
                         image_part = shape.part.related_part(shape._element.blip_rId)
                         image_blob = image_part.blob
-                        width_in_presentation, heigth_in_presentation = get_image_dimensions(image_blob)
-                        print("ВЫСОТА И ШИРИНА В ПРЕЗЕНТАЦИИ:", width_in_presentation, "x", heigth_in_presentation)
+                        #width_in_presentation, heigth_in_presentation = get_image_dimensions(image_blob)
+                        width_in_presentation = shape.width.inches * 96  # Convert to pixels
+                        height_in_presentation = shape.height.inches * 96  # Convert to pixels
+                        print("ВЫСОТА И ШИРИНА В ПРЕЗЕНТАЦИИ:", width_in_presentation, "x", height_in_presentation)
                         
                         # Get dimensions of the new image from the stream
                         with Image.open(new_image_stream) as img:
                             new_image_width, new_image_height = img.size
                             print("ВЫСОТА И ШИРИНА НОВОГО ИЗОБРАЖЕНИЯ!!:",  new_image_width, "x", new_image_height)
                             
-        
-                            
-                            new_width, new_height = resize_image_to_fit(new_image_width, new_image_height, width_in_presentation, heigth_in_presentation)
+                       
+                            new_width, new_height = resize_image_to_fit(new_image_width, new_image_height, width_in_presentation, height_in_presentation)
                             print("New size after resize:", new_width, "x", new_height)
                             
-                            img_resized = img.resize((new_width, new_height))
-
-                            resized_width, resized_height = img_resized.size
-                            print("Resized image size:", resized_width, "x", resized_height)
+    
                             
-                            # Save the resized image to a byte stream
-                            new_image_stream_resized = BytesIO()
-                            img_resized.save(new_image_stream_resized, format='PNG')                           
-                            width_in_inches = resized_width / 96  # Предполагаемое разрешение экрана в PPI (96 PPI - стандартное разрешение экрана для PowerPoint)
-                            height_in_inches = resized_height / 96
+                            img_resized = img.resize((new_width, new_height), Image.ADAPTIVE)
 
-                            # Устанавливаем новый размер формы
-                            shape.width = Inches(width_in_inches)
-                            shape.height = Inches(height_in_inches)
-                            # Replace the image in the presentation
-                            slide_part, rId = shape.part, shape._element.blip_rId
-                            image_part = slide_part.related_part(rId)
-                            image_part.blob = new_image_stream_resized.getvalue()
-                            new_image_stream_resized.close()
+                            
+                            
+                            #image_resized to BytesIO
+                            new_image_stream_resized = BytesIO()
+                            img_resized.save(new_image_stream_resized, format='PNG')
+                            new_image_stream_resized.seek(0)
+
+                            #add image to current slide
+                            #slide.shapes.add_picture(new_image_stream_resized, Inches(0), Inches(0), width=Inches(new_width/96), height=Inches(new_height/96))
+
+                           
+                            #  Устанавливаем новый размер формы
+                            shape.width = Inches(new_width/96)
+                            shape.height = Inches(new_height/96)
+
+                            #save old shape position
+                            left = shape.left
+                            top = shape.top
+                            #delete old shape
+                            sp = shape
+                            sp.element.getparent().remove(sp.element)
+
+                            #add new shape
+                            slide.shapes.add_picture(new_image_stream_resized, left, top, width=Inches(new_width/96), height=Inches(new_height/96))
+
+                             # Replace the image in the presentation
+                            # slide_part, rId = shape.part, shape._element.blip_rId
+                            # image_part = slide_part.related_part(rId)
+                            # image_part.blob = new_image_stream_resized.getvalue()
+                            # new_image_stream_resized.close()
+                                
+                           
+                           
 
                             print('Изображение успешно заменено')
                     except Exception as e:
