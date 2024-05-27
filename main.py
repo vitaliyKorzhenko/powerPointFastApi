@@ -150,8 +150,8 @@ def is_square(width, height):
 
 
 def resize_image_to_fit(new_image_width, new_image_height, width_in_presentation, height_in_presentation):
-    print('Ширина и высота нового изображения:', new_image_width, new_image_height)
-    print('Ширина и высота в презентации:', width_in_presentation, height_in_presentation)
+    #print('Ширина и высота нового изображения:', new_image_width, new_image_height)
+    #print('Ширина и высота в презентации:', width_in_presentation, height_in_presentation)
 
     # Calculate aspect ratios
     new_image_aspect_ratio = new_image_width / new_image_height
@@ -169,7 +169,7 @@ def resize_image_to_fit(new_image_width, new_image_height, width_in_presentation
     target_width = int(new_image_width * scale_factor)
     target_height = int(new_image_height * scale_factor)
 
-    print('Наши размеры в результате!!!:', target_width, target_height)
+    #print('Наши размеры в результате!!!:', target_width, target_height)
     return target_width, target_height
 
 
@@ -181,7 +181,7 @@ def replace_image_in_presentation(prs, media_uniq_name, new_image_stream):
                 media_name = find_media_info_by_shape(shape, shape._element.blip_rId)
                 #print('MEDIA NAME', media_name, media_uniq_name);
                 if media_name and media_name == media_uniq_name:
-                    print('Найдено изображение для замены:', media_uniq_name)
+                    #print('Найдено изображение для замены:', media_uniq_name)
                     try:
                         # Get dimensions of the original image in the presentation
                         image_part = shape.part.related_part(shape._element.blip_rId)
@@ -189,16 +189,16 @@ def replace_image_in_presentation(prs, media_uniq_name, new_image_stream):
                         #width_in_presentation, heigth_in_presentation = get_image_dimensions(image_blob)
                         width_in_presentation = shape.width.inches * 96  # Convert to pixels
                         height_in_presentation = shape.height.inches * 96  # Convert to pixels
-                        print("ВЫСОТА И ШИРИНА В ПРЕЗЕНТАЦИИ:", width_in_presentation, "x", height_in_presentation)
+                        #print("ВЫСОТА И ШИРИНА В ПРЕЗЕНТАЦИИ:", width_in_presentation, "x", height_in_presentation)
                         
                         # Get dimensions of the new image from the stream
                         with Image.open(new_image_stream) as img:
                             new_image_width, new_image_height = img.size
-                            print("ВЫСОТА И ШИРИНА НОВОГО ИЗОБРАЖЕНИЯ!!:",  new_image_width, "x", new_image_height)
+                            #print("ВЫСОТА И ШИРИНА НОВОГО ИЗОБРАЖЕНИЯ!!:",  new_image_width, "x", new_image_height)
                             
                        
                             new_width, new_height = resize_image_to_fit(new_image_width, new_image_height, width_in_presentation, height_in_presentation)
-                            print("New size after resize:", new_width, "x", new_height)
+                            #print("New size after resize:", new_width, "x", new_height)
                             
     
                             
@@ -238,7 +238,7 @@ def replace_image_in_presentation(prs, media_uniq_name, new_image_stream):
                            
                            
 
-                            print('Изображение успешно заменено')
+                            #print('Изображение успешно заменено')
                     except Exception as e:
                         print('Ошибка:', e)
                     break
@@ -248,20 +248,20 @@ def replace_image_in_presentation(prs, media_uniq_name, new_image_stream):
 
 
 def replace_image_background_in_presentation_withoutResize (prs, media_uniq_name, new_image_stream): 
-    print('#REPLACE IMAGE BACKGROUND IN PRESENTATION WITHOUT RESIZE');
+    #print('#REPLACE IMAGE BACKGROUND IN PRESENTATION WITHOUT RESIZE');
     for slide in prs.slides:
         for shape in slide.shapes:
             if shape.shape_type == 13:  # Check if shape is an image
                 media_name = find_media_info_by_shape(shape, shape._element.blip_rId)
-                print('MEDIA NAME', media_name, media_uniq_name);
+                #print('MEDIA NAME', media_name, media_uniq_name);
                 if media_name and media_name == media_uniq_name:
-                    print('Найдено изображение для замены:', media_uniq_name)
+                   # print('Найдено изображение для замены:', media_uniq_name)
                     try:
                         # Replace the image in the presentation
                         slide_part, rId = shape.part, shape._element.blip_rId
                         image_part = slide_part.related_part(rId)
                         image_part.blob = new_image_stream.getvalue()
-                        print('Изображение успешно заменено')
+                        #print('Изображение успешно заменено')
                     except Exception as e:
                         print('Ошибка:', e)
                     break
@@ -376,26 +376,25 @@ def download_file(url):
                                    
 @app.post("/presentation/generateNewPresentationUseUrl")
 async def generateNewPresentationUseUrl(presentationInfo: PresentationParams):
-    print('START REPLACE IMAGE', presentationInfo)
+    print('BODY', presentationInfo)
     imageBucket = 'img'
     presentation_url = presentationInfo.presentation
     bucket = BucketManager()
     file_stream = download_file(presentation_url)
     if not file_stream:
         return HTTPException(status_code=404, detail="Presentation file not found")
-    print("fileSTREAM NOT NONE");
+    #print("fileSTREAM NOT NONE");
     presentation = pptx.Presentation(file_stream)
-    images = parse_pptx(presentation);
-    print("IMAGES IN PR", images);
+    #images = parse_pptx(presentation);
+    #print("IMAGES IN PR", images);
     result_stream = BytesIO()
     for item in presentationInfo.replacements:
             if item.get('media_unique_name') and item.get('assets_file'):
-                print("GO GO GO", item['media_unique_name'], item['assets_file'])
+                #print("GO GO GO", item['media_unique_name'], item['assets_file'])
                 if bucket.file_exists(imageBucket, item["assets_file"]):
                     image = bucket.getObjectBody(imageBucket + '/' + item['assets_file'])
                     if not image:
                         return HTTPException(status_code=404, detail="Image not found")
-                    print("start create image stream")
                     byteImgIO = BytesIO(image)
                     byteImgIO.seek(0)
                     with byteImgIO as image_stream:
@@ -407,7 +406,6 @@ async def generateNewPresentationUseUrl(presentationInfo: PresentationParams):
                             return HTTPException(status_code=404, detail="Image not found")
                         else:
                             # Update presentation
-                            print("UPDATE PRESENTATION")
                             presentation = result_prs
                             #delete byteImgIO
                     
@@ -415,12 +413,11 @@ async def generateNewPresentationUseUrl(presentationInfo: PresentationParams):
                 return HTTPException(status_code=404, detail="Invalid replacement item")
 
         # Save updated presentation to results folder
-    print("before loop");
     presentation.save(result_stream)
     result_stream.seek(0)
     cleanedName = replace_symbol(presentationInfo.resultFileName) + '.pptx'
     resultName = re.sub(r'[^\x00-\x7f]',r'', cleanedName) 
-    print("RESULT CLEANED", resultName);
+    #print("RESULT CLEANED", resultName);
 
     return StreamingResponse(BytesIO(result_stream.read()), media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation', headers={'Content-Disposition': f'attachment; filename="{resultName}"'})
 
@@ -452,7 +449,7 @@ async def changeBackgroundInSlideAndReturnPresentation (presentationInfo: Change
         result_stream.seek(0)
         cleanedName = replace_symbol(presentationInfo.resultFileName) + '.pptx'
         resultName = re.sub(r'[^\x00-\x7f]',r'', cleanedName) 
-        print("RESULT CLEANED", resultName);
+        #print("RESULT CLEANED", resultName);
         return StreamingResponse(BytesIO(result_stream.read()), media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation', headers={'Content-Disposition': f'attachment; filename="{newName}"'})
 
 
