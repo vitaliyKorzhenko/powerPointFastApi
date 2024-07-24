@@ -128,6 +128,16 @@ class BucketManager:
     def saveFileToResults(self, fileName, data):
         return self.s3.Object(self.bucket_name, "results/" + fileName).put(Body=data)
     
+    #save file to tests
+    def saveFileToFolder(self, fileName, folder, data):
+        return self.s3.Object(self.bucket_name, folder + fileName).put(Body=data)
+    
+    def saveFileToFolderAndGetPublicUrl(self, fileName, folder, data):
+        #add public access to file
+        self.saveFileToFolder(fileName, folder, data)
+        self.addPublicAccess(folder + fileName)
+        return self.getPublicUrl(folder + fileName)
+    
     #add public access to file
     def addPublicAccess(self, key):
         return self.s3.ObjectAcl(self.bucket_name, key).put(ACL='public-read')

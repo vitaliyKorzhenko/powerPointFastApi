@@ -13,6 +13,7 @@ import requests
 from pathvalidate import replace_symbol, sanitize_filename
 import io
 from pptx.util import Inches
+from typing import List
 
 #initialize app
 app = FastAPI()
@@ -420,6 +421,127 @@ async def generateNewPresentationUseUrl(presentationInfo: PresentationParams):
     #print("RESULT CLEANED", resultName);
 
     return StreamingResponse(BytesIO(result_stream.read()), media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation', headers={'Content-Disposition': f'attachment; filename="{resultName}"'})
+
+
+                                 
+@app.post("/presentation/loadNewPresentationToBucketUseUrl")
+async def loadNewPresentationToBucketUseUrl(presentationInfo: PresentationParams):
+    print('BODY', presentationInfo)
+    imageBucket = 'img'
+    presentation_url = presentationInfo.presentation
+    bucket = BucketManager()
+    file_stream = download_file(presentation_url)
+    if not file_stream:
+        return HTTPException(status_code=404, detail="Presentation file not found")
+    #print("fileSTREAM NOT NONE");
+    presentation = pptx.Presentation(file_stream)
+    #images = parse_pptx(presentation);
+    #print("IMAGES IN PR", images);
+    result_stream = BytesIO()
+    for item in presentationInfo.replacements:
+            if item.get('media_unique_name') and item.get('assets_file'):
+                #print("GO GO GO", item['media_unique_name'], item['assets_file'])
+                if bucket.file_exists(imageBucket, item["assets_file"]):
+                    image = bucket.getObjectBody(imageBucket + '/' + item['assets_file'])
+                    if not image:
+                        return HTTPException(status_code=404, detail="Image not found")
+                    byteImgIO = BytesIO(image)
+                    byteImgIO.seek(0)
+                    with byteImgIO as image_stream:
+                        if item["type"] == "background":
+                            result_prs = replace_image_background_in_presentation_withoutResize(presentation, item['media_unique_name'], image_stream)
+                        else:    
+                            result_prs = replace_image_in_presentation(presentation, item['media_unique_name'], image_stream)
+                        if not result_prs:
+                            return HTTPException(status_code=404, detail="Image not found")
+                        else:
+                            # Update presentation
+                            presentation = result_prs
+                            #delete byteImgIO
+                    
+            else:
+                return HTTPException(status_code=404, detail="Invalid replacement item")
+
+        # Save updated presentation to results folder
+    presentation.save(result_stream)
+    result_stream.seek(0)
+    cleanedName = replace_symbol(presentationInfo.resultFileName) + '.pptx'
+    resultName = re.sub(r'[^\x00-\x7f]',r'', cleanedName) 
+    folder = 'tests/'
+    return bucket.saveFileToFolderAndGetPublicUrl(resultName, folder, result_stream.read())
+
+
+
+
+class PresentationsParams(BaseModel):
+    presentations: List[PresentationParams]
+
+
+
+def process_single_presentation(presentationInfo: PresentationParams):
+    try:
+        print('BODY', presentationInfo)
+        imageBucket = 'img'
+        presentation_url = presentationInfo.presentation
+        bucket = BucketManager()
+        file_stream = download_file(presentation_url)
+        if not file_stream:
+            raise HTTPException(status_code=404, detail="Presentation file not found")
+
+        presentation = pptx.Presentation(file_stream)
+        result_stream = BytesIO()
+        for item in presentationInfo.replacements:
+            if item.get('media_unique_name') and item.get('assets_file'):
+                if bucket.file_exists(imageBucket, item["assets_file"]):
+                    image = bucket.getObjectBody(imageBucket + '/' + item['assets_file'])
+                    if not image:
+                        raise HTTPException(status_code=404, detail="Image not found")
+                    byteImgIO = BytesIO(image)
+                    byteImgIO.seek(0)
+                    with byteImgIO as image_stream:
+                        if item["type"] == "background":
+                            result_prs = replace_image_background_in_presentation_withoutResize(presentation, item['media_unique_name'], image_stream)
+                        else:
+                            result_prs = replace_image_in_presentation(presentation, item['media_unique_name'], image_stream)
+                        if not result_prs:
+                            raise HTTPException(status_code=404, detail="Image not found")
+                        else:
+                            presentation = result_prs
+            else:
+                raise HTTPException(status_code=404, detail="Invalid replacement item")
+
+        presentation.save(result_stream)
+        result_stream.seek(0)
+        cleanedName = replace_symbol(presentationInfo.resultFileName) + '.pptx'
+        resultName = re.sub(r'[^\x00-\x7f]', r'', cleanedName)
+        folder = 'tests/'
+        return bucket.saveFileToFolderAndGetPublicUrl(resultName, folder, result_stream.read())
+
+    except HTTPException as e:
+        print(f"Error: {e.detail}")
+        return ""
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        return ""
+
+
+
+
+
+
+@app.post("/presentation/loadListPresentationsToBucketUseUrl")
+async def loadListPresentationsToBucketUseUrl(presentationsInfo: PresentationsParams):
+    results = []
+    for presentationInfo in presentationsInfo.presentations:
+        try:
+            public_url = process_single_presentation(presentationInfo)
+            results.append({"presentation": presentationInfo.resultFileName, "url": public_url})
+        except HTTPException as e:
+            results.append({"presentation": presentationInfo.resultFileName, "error": e.detail})
+    
+    return results
+
+
 
 
 #add model for body params
