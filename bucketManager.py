@@ -4,6 +4,10 @@
 import boto3
 import configparser
 import os
+from dotenv import load_dotenv
+
+# Загружаем переменные окружения из .env файла
+load_dotenv()
 class BucketManager:
     def __init__(self):
         #read config file
@@ -13,9 +17,9 @@ class BucketManager:
         config.read(configPath)
         print(config.sections())
         #get data for aws configuration
-        self.aws_access_key_id = config['aws']['aws_access_key_id']
-        self.aws_secret_access_key = config['aws']['aws_secret_access_key']
-        self.aws_region = config['aws']['aws_region']
+        self.aws_access_key_id = os.getenv('AWS_ACCESS_KEY_ID')
+        self.aws_secret_access_key = os.getenv('AWS_SECRET_ACCESS_KEY')
+        self.aws_region = os.getenv('AWS_REGION')
         #set bucket name
         self.bucket_name = config['s3']['bucket']
         #add to os environment credentials

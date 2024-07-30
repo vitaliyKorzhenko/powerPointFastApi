@@ -1,4 +1,5 @@
 import re
+import aiohttp
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from bucketManager import BucketManager
@@ -477,19 +478,28 @@ class PresentationsParams(BaseModel):
     presentations: List[PresentationParams]
 
 
+async def download_file_async(url: str) -> BytesIO:
+    print('DOWNLOAD FILE ASYNC', url)
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as response:
+            if response.status != 200:
+                print('ERROR DOWNLOAD FILE ASYNC', response.status)
+                raise HTTPException(status_code=404, detail="Presentation file not found")
+            return BytesIO(await response.read())
 
-def process_single_presentation(presentationInfo: PresentationParams):
+async def process_single_presentation(presentationInfo: PresentationParams):
     try:
         print('BODY', presentationInfo)
         imageBucket = 'img'
         presentation_url = presentationInfo.presentation
         bucket = BucketManager()
-        file_stream = download_file(presentation_url)
+        file_stream = await download_file_async(presentation_url)
         if not file_stream:
             raise HTTPException(status_code=404, detail="Presentation file not found")
 
         presentation = pptx.Presentation(file_stream)
         result_stream = BytesIO()
+        print('FIND PRESENTATION', presentationInfo)
         for item in presentationInfo.replacements:
             if item.get('media_unique_name') and item.get('assets_file'):
                 if bucket.file_exists(imageBucket, item["assets_file"]):
@@ -521,7 +531,7 @@ def process_single_presentation(presentationInfo: PresentationParams):
         print(f"Error: {e.detail}")
         return ""
     except Exception as e:
-        print(f"Unexpected error: {e}")
+        print(f"Unexpected error proccess single!: {e}")
         return ""
 
 
@@ -534,7 +544,7 @@ async def loadListPresentationsToBucketUseUrl(presentationsInfo: PresentationsPa
     results = []
     for presentationInfo in presentationsInfo.presentations:
         try:
-            public_url = process_single_presentation(presentationInfo)
+            public_url = await process_single_presentation(presentationInfo)
             results.append({"presentation": presentationInfo.resultFileName, "url": public_url})
         except HTTPException as e:
             results.append({"presentation": presentationInfo.resultFileName, "error": e.detail})
