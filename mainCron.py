@@ -41,19 +41,6 @@ def append_results_to_s3(s3_key, new_results):
 
 
 
-def reset_result_json(file_path='results.json'):
-    # Создание пустого массива
-    empty_array = []
-
-    # Запись пустого массива в файл
-    try:
-        with open(file_path, 'w') as f:
-            json.dump(empty_array, f, indent=4)
-        print(f"{file_path} has been reset to an empty array.")
-    except Exception as e:
-        print(f"Error resetting {file_path}: {e}")
-
-
 def update_state_info(current_file: str, processed_elements: int, total_elements: int, result_file: str = ""):
     info_file_path = 'infoFile.json'
     
@@ -247,8 +234,13 @@ async def job():
     print('Before update state info', current_file, count_result, total_count, s3_key)
     update_state_info(current_file, count_result, total_count, s3_key)
     #upload infoFile.json to S3
-    s3_key = f"Data/infoResults.json"
-    bucket.upload_file_to_data_s3(info_file_path, s3_key)
+    s3_keyInfo = f"Data/infoResults.json"
+    #public for infoFile.json
+    bucket.addPublicAccess(s3_keyInfo)
+    bucket.upload_file_to_data_s3(info_file_path, s3_keyInfo)
+    #print public url for infoFile.json
+    public_urlInfo = bucket.getPublicUrl(s3_keyInfo)
+    print('Public URL Info:', public_urlInfo)
 
 async def scheduler():
     minutes = 5
