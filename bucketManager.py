@@ -1,10 +1,13 @@
 # create class for work with s3 bucket use boto3
 #
 
+from typing import List
 import boto3
 import configparser
 import os
 from dotenv import load_dotenv
+import json
+from botocore.exceptions import NoCredentialsError, PartialCredentialsError
 
 # Загружаем переменные окружения из .env файла
 load_dotenv()
@@ -149,3 +152,85 @@ class BucketManager:
     #get public url for file
     def getPublicUrl(self, key):
         return f"https://{self.bucket_name}.s3.amazonaws.com/{key}"
+    
+    def get_files_in_data_folder(self):
+        folder = "data/"
+        files = []
+        for obj in self.bucket.objects.filter(Prefix=folder):
+            if not obj.key.endswith('/'):  # Исключаем папки
+                files.append(obj.key)
+        return files
+    
+        
+    def get_object_body(self, key):
+        return self.s3.Object(self.bucket_name, key).get()['Body'].read().decode('utf-8')
+
+    def get_object_body_all(self, key):
+         return self.s3.Object(self.bucket_name, key).get()['Body'].read()
+    
+    def upload_file_to_data_s3(self, file_path, s3_key):
+        try:
+            self.s3.Bucket(self.bucket_name).upload_file(file_path, s3_key)
+            print(f"Uploaded {file_path} to s3://{self.bucket_name}/{s3_key}")
+        except (NoCredentialsError, PartialCredentialsError) as e:
+            print(f"Credentials error: {e}")
+        except Exception as e:
+            print(f"Error uploading file to S3: {e}")
+    
+
+    def process_info_file(self, start_index=None, count=10):
+        # Чтение infoFile.json из корня
+        with open('infoFile.json', 'r') as f:
+            info_data = json.load(f)
+
+        current_file = info_data['currentFile']
+        print(f"Текущий файл: {current_file}")
+
+        # Получение содержимого файла из папки data
+        file_content = self.get_object_body(f'data/{current_file}')
+        data = json.loads(file_content)
+
+        # Получаем массив presentations
+        presentations = data.get('presentations', [])
+
+        # Определяем общее количество элементов в файле
+        total_count = len(presentations)
+
+        if start_index is None:
+            # Начинаем с первого элемента, если start_index не указан
+            start_index = 0
+        else:
+            # Проверка, что start_index находится в допустимом диапазоне
+            if start_index >= total_count:
+                print("Указан start_index за пределами доступного диапазона.")
+                return [], total_count, 0, start_index
+
+        # Возвращаем количество элементов после найденного индекса
+        end_index = start_index + count
+        result_items = presentations[start_index:end_index]
+
+        # Определяем количество выбранных элементов
+        count_result = len(result_items)
+
+        # Печать результатов
+        print(f"Общее количество элементов в файле: {total_count}")
+        print(f"Количество элементов после индекса {start_index}: {count_result}")
+
+        if count_result > 0:
+            print("Элементы:")
+            print(json.dumps(result_items, indent=4))
+        else:
+         print("Нет элементов.")
+    
+        return result_items, total_count, count_result, start_index + count
+
+    def upload_string_to_s3(self, string_data, s3_key):
+        try:
+         # Используем метод put объекта S3 для загрузки данных
+            print(f"Загрузка данных в s3://{self.bucket_name}/{s3_key}")
+            self.s3.Object(self.bucket_name, s3_key).put(Body=string_data)
+            print(f"Uploaded string data to s3://{self.bucket_name}/{s3_key}")
+        except NoCredentialsError:
+            print("Credentials not available.")
+        except Exception as e:
+            print(f"An error occurred: {e}")

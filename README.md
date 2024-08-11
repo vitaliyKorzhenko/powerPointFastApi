@@ -36,6 +36,21 @@ kill [your id ]
 
 
 # update python package
+python3 -m venv venv
+source venv/bin/activate
+python3 -m pip install -r requirements.txt
+
+
+
 python3 -m venv .venvsource .venv/bin/activate
 python3 -m pip install -r requirements.txt
 
+
+# как запусить крон 
+python3 mainCron.py &
+# найти ид
+pgrep -f mainCron.py - 
+# остановить 
+kill id
+# jobs
+jobs
