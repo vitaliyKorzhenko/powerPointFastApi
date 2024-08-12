@@ -112,7 +112,7 @@ def get_current_file():
     # Если файл уже указан и не завершен, возвращаем его
     if current_file and state_info:
         last_state = state_info[-1]
-        if last_state['status'] != 'finished':
+        if last_state['status'] not in ['finished', 'uploaded']:
             current_file_id = info_data.get('currentFileId', 0)
             count = info_data.get('count', 3)
             return current_file, current_file_id, count
