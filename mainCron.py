@@ -228,13 +228,13 @@ async def job():
     print('Data files processed and results updated.')
 
       # Upload result.json to S3
-    s3_key = f"Data/{current_file}_result.json"
+    s3_key = f"data/{current_file}_result.json"
     public_url = append_results_to_s3(s3_key, results)
     print('Public URL:', public_url)
     print('Before update state info', current_file, count_result, total_count, s3_key)
     update_state_info(current_file, count_result, total_count, s3_key)
     #upload infoFile.json to S3
-    s3_keyInfo = f"Data/infoResults.json"
+    s3_keyInfo = f"data/infoResults.json"
     #public for infoFile.json
     bucket.addPublicAccess(s3_keyInfo)
     bucket.upload_file_to_data_s3(info_file_path, s3_keyInfo)
