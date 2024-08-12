@@ -1,6 +1,14 @@
 {
-    "currentFile": "",
-    "currentFileId": 0,
-    "count": 20,
-    "stateInfo": []
+    "currentFile": "66b77e4c1a4e1.json",
+    "currentFileId": 20,
+    "count": 10,
+    "stateInfo": [
+        {
+            "file_name": "66b77e4c1a4e1.json",
+            "status": "processed",
+            "total_elements": 60,
+            "processed_elements": 8,
+            "result_file": "data/66b77e4c1a4e1.json_result.json"
+        }
+    ]
 }

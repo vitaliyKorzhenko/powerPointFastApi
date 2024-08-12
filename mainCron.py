@@ -5,39 +5,49 @@ import logging
 from bucketManager import BucketManager
 from presentation_helper import PresentationParams, process_single_presentation
 import os
+from botocore.exceptions import ClientError
 
 def append_results_to_s3(s3_key, new_results):
-    # Создаем экземпляр BucketManager
     bucket_manager = BucketManager()
 
     try:
         # Получаем текущий результатный файл с S3
         existing_data = bucket_manager.get_object_body(s3_key)
         existing_data = json.loads(existing_data) if existing_data else []
-    except bucket_manager.s3_client.exceptions.NoSuchKey:
-        existing_data = []
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == 'NoSuchKey':
+            existing_data = []  # Если файла нет, задаем пустой список
+        else:
+            raise
 
-    # Убедитесь, что существующие данные - это список
     if not isinstance(existing_data, list):
         existing_data = []
 
-    # Добавляем новые результаты
     existing_data.extend(new_results)
 
-    # Преобразуем данные обратно в JSON-строку
     updated_data = json.dumps(existing_data, indent=4)
 
-    # Загружаем обновленный файл обратно на S3
+    # Загружаем обновленный файл обратно на S3 (или создаем новый)
     bucket_manager.upload_string_to_s3(updated_data, s3_key)
 
-    # Делаем файл публичным
-    bucket_manager.addPublicAccess(s3_key)
+    # Проверяем наличие файла перед установкой публичного доступа
+    try:
+        bucket_manager.get_object_body(s3_key)  # Проверка существования
+        bucket_manager.addPublicAccess(s3_key)
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == 'NoSuchKey':
+            print(f"Object {s3_key} does not exist. Cannot set public access.")
+        else:
+            raise
 
-    # Выводим публичный URL для файла
     public_url = bucket_manager.getPublicUrl(s3_key)
     print(f"Updated {s3_key} on S3 with {len(new_results)} new results. Public URL: {public_url}")
 
     return public_url
+
+
 
 
 
@@ -236,9 +246,9 @@ async def job():
     #upload infoFile.json to S3
     s3_keyInfo = f"data/infoResults.json"
     #public for infoFile.json
-    bucket.addPublicAccess(s3_keyInfo)
     bucket.upload_file_to_data_s3(info_file_path, s3_keyInfo)
-    #print public url for infoFile.json
+    bucket.addPublicAccess(s3_keyInfo)
+     #print public url for infoFile.json
     public_urlInfo = bucket.getPublicUrl(s3_keyInfo)
     print('Public URL Info:', public_urlInfo)
 

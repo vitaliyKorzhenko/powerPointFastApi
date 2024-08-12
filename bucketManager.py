@@ -7,7 +7,7 @@ import configparser
 import os
 from dotenv import load_dotenv
 import json
-from botocore.exceptions import NoCredentialsError, PartialCredentialsError
+from botocore.exceptions import ClientError, NoCredentialsError, PartialCredentialsError
 
 # Загружаем переменные окружения из .env файла
 load_dotenv()
@@ -145,9 +145,16 @@ class BucketManager:
         self.addPublicAccess(folder + fileName)
         return self.getPublicUrl(folder + fileName)
     
-    #add public access to file
     def addPublicAccess(self, key):
-        return self.s3.ObjectAcl(self.bucket_name, key).put(ACL='public-read')
+        try:
+            return self.s3.ObjectAcl(self.bucket_name, key).put(ACL='public-read')
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == 'NoSuchKey':
+                print(f"Object {key} does not exist. Cannot set public access.")
+            else:
+                raise
+        return ''  # Возвращаем пустую строку
     
     #get public url for file
     def getPublicUrl(self, key):
