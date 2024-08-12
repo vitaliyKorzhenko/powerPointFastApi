@@ -243,7 +243,7 @@ async def job():
     print('Public URL Info:', public_urlInfo)
 
 async def scheduler():
-    minutes = 5
+    minutes = 2
     while True:
         await job()
         await asyncio.sleep(minutes * 60)  # Run the job every `minutes` minutes
