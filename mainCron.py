@@ -126,7 +126,7 @@ def get_current_file(folder = 'data/'):
     # Ищем первый JSON-файл, который не является результатом и отсутствует в stateInfo
     for file in data_files:
         file_name = file.split('/')[-1]
-        if file_name.endswith('.json') and not re.search(r'results?', file_name, re.IGNORECASE):
+        if file_name.endswith('.json') and not re.search(r'results?', file_name, re.IGNORECASE) and not re.search(r'result?', file_name, re.IGNORECASE):
             if not any(state['file_name'] == file_name and state['status'] in ['finished', 'uploaded'] for state in state_info):
                 current_file = file_name
                 break
