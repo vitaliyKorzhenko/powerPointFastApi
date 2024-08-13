@@ -160,8 +160,7 @@ class BucketManager:
     def getPublicUrl(self, key):
         return f"https://{self.bucket_name}.s3.amazonaws.com/{key}"
     
-    def get_files_in_data_folder(self):
-        folder = "data/"
+    def get_files_in_data_folder(self, folder = "data/"):
         files = []
         for obj in self.bucket.objects.filter(Prefix=folder):
             if not obj.key.endswith('/'):  # Исключаем папки
@@ -185,7 +184,7 @@ class BucketManager:
             print(f"Error uploading file to S3: {e}")
     
 
-    def process_info_file(self, start_index=None, count=10):
+    def process_info_file(self, start_index=None, count=10, folder = "data/"):
         # Чтение infoFile.json из корня
         with open('infoFile.json', 'r') as f:
             info_data = json.load(f)
@@ -194,7 +193,7 @@ class BucketManager:
         print(f"Текущий файл: {current_file}")
 
         # Получение содержимого файла из папки data
-        file_content = self.get_object_body(f'data/{current_file}')
+        file_content = self.get_object_body(f'{folder}{current_file}')
         data = json.loads(file_content)
 
         # Получаем массив presentations

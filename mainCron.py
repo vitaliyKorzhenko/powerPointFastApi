@@ -6,6 +6,7 @@ from bucketManager import BucketManager
 from presentation_helper import PresentationParams, process_single_presentation
 import os
 from botocore.exceptions import ClientError
+import re
 
 def append_results_to_s3(s3_key, new_results):
     bucket_manager = BucketManager()
@@ -96,7 +97,7 @@ def update_state_info(current_file: str, processed_elements: int, total_elements
 
     print(f"Updated stateInfo for {current_file}: {processed_elements}/{total_elements} elements processed.")
 
-def get_current_file():
+def get_current_file(folder = 'data/'):
     # Инициализация BucketManager
     bucket = BucketManager()
     info_file_path = 'infoFile.json'
@@ -117,7 +118,7 @@ def get_current_file():
             return current_file, current_file_id, count
     
     # Если файл не указан или завершен, получаем первый файл из папки data
-    data_files = bucket.get_files_in_data_folder()
+    data_files = bucket.get_files_in_data_folder(folder)
     if not data_files:
         print("No files found in 'data' folder.")
         return None, None, None
@@ -125,7 +126,7 @@ def get_current_file():
     # Ищем первый JSON-файл, который не является результатом и отсутствует в stateInfo
     for file in data_files:
         file_name = file.split('/')[-1]
-        if file_name.endswith('.json') and not file_name.endswith('result.json'):
+        if file_name.endswith('.json') and not re.search(r'results?', file_name, re.IGNORECASE):
             if not any(state['file_name'] == file_name and state['status'] in ['finished', 'uploaded'] for state in state_info):
                 current_file = file_name
                 break
@@ -210,10 +211,13 @@ logging.basicConfig(filename='mycron.log', level=logging.INFO, format='%(asctime
 
 async def job():
     bucket = BucketManager()
-    
+    folder = os.getenv('DATA_FOLDER', 'data/')
+    print('Data folder:', folder)
     # Get current file
-    current_file, current_file_id, curretCount = get_current_file()
+    current_file, current_file_id, curretCount = get_current_file(folder)
     
+    curretCount = int(os.getenv('CHUNK_SIZE', 10))
+    print('Chunk size:', curretCount)
     print('Processing data files...')
 
     if not current_file:
@@ -223,7 +227,7 @@ async def job():
     print('Current file:', current_file, current_file_id, curretCount)
 
 
-    data_files, total_count, count_result, new_file_id = bucket.process_info_file(start_index=current_file_id, count=curretCount)
+    data_files, total_count, count_result, new_file_id = bucket.process_info_file(start_index=current_file_id, count=curretCount, folder=folder)
     result = [PresentationParams(**item) for item in data_files]
     
     #info file path
@@ -237,13 +241,13 @@ async def job():
     print('Data files processed and results updated.')
 
       # Upload result.json to S3
-    s3_key = f"data/{current_file}_result.json"
+    s3_key = f"{folder}{current_file}_result.json"
     public_url = append_results_to_s3(s3_key, results)
     print('Public URL:', public_url)
     print('Before update state info', current_file, count_result, total_count, s3_key)
     update_state_info(current_file, count_result, total_count, s3_key)
     #upload infoFile.json to S3
-    s3_keyInfo = f"data/infoResults.json"
+    s3_keyInfo = f"{folder}infoResults.json"
     #public for infoFile.json
     bucket.upload_file_to_data_s3(info_file_path, s3_keyInfo)
     bucket.addPublicAccess(s3_keyInfo)
@@ -252,7 +256,9 @@ async def job():
     print('Public URL Info:', public_urlInfo)
 
 async def scheduler():
-    minutes = 2
+    #use env variable to set the time
+    minutes = int(os.getenv('CRON_TIME', 1))
+    print('Scheduler started. Running job every', minutes, 'minutes.')
     while True:
         await job()
         await asyncio.sleep(minutes * 60)  # Run the job every `minutes` minutes
