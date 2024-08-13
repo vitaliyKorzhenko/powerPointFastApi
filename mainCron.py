@@ -111,8 +111,7 @@ def get_current_file():
     
     # Если файл уже указан и не завершен, возвращаем его
     if current_file and state_info:
-        last_state = state_info[-1]
-        if last_state['status'] not in ['finished', 'uploaded']:
+        if not any(state['file_name'] == current_file and state['status'] in ['finished', 'uploaded'] for state in state_info):
             current_file_id = info_data.get('currentFileId', 0)
             count = info_data.get('count', 3)
             return current_file, current_file_id, count
@@ -127,7 +126,7 @@ def get_current_file():
     for file in data_files:
         file_name = file.split('/')[-1]
         if file_name.endswith('.json') and not file_name.endswith('result.json'):
-            if not any(state['file_name'] == file_name for state in state_info):
+            if not any(state['file_name'] == file_name and state['status'] in ['finished', 'uploaded'] for state in state_info):
                 current_file = file_name
                 break
     else:
