@@ -13,11 +13,15 @@ from typing import List, Dict, Any
 
 
 async def download_file_async(url: str) -> BytesIO:
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            if response.status != 200:
-                return None
-            return BytesIO(await response.read())
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status != 200:
+                    return None
+                return BytesIO(await response.read())
+    except Exception as e:
+        # Можно добавить логирование ошибки, если это нужно
+        return None
 
 
 def resize_image_to_fit(new_image_width, new_image_height, width_in_presentation, height_in_presentation):
