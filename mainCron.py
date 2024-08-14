@@ -7,6 +7,8 @@ from presentation_helper import PresentationParams, process_single_presentation
 import os
 from botocore.exceptions import ClientError
 import re
+import time
+
 
 def append_results_to_s3(s3_key, new_results):
     bucket_manager = BucketManager()
@@ -214,63 +216,99 @@ async def process_all_presentations(data_files: List[PresentationParams]):
 # Настройка логирования
 logging.basicConfig(filename='mycron.log', level=logging.INFO, format='%(asctime)s - %(message)s')
 
+
+
+def lock_job(lock_file='job.lock'):
+    # Если файл-блокировка существует и он создан недавно, задача не будет выполняться.
+    if os.path.exists(lock_file):
+        print(f"Lock file {lock_file} exists. Another job might be running.")
+        return False
+    
+    # Создаем файл-блокировку
+    with open(lock_file, 'w') as f:
+        f.write(str(time.time()))
+    
+    return True
+
+def unlock_job(lock_file='job.lock'):
+    # Удаляем файл-блокировку после завершения задачи.
+    if os.path.exists(lock_file):
+        os.remove(lock_file)
+
 async def job():
-    bucket = BucketManager()
-    folder = os.getenv('DATA_FOLDER', 'data/')
-    print('Data folder:', folder)
-    # Get current file
-    current_file, current_file_id, curretCount = get_current_file(folder)
-    
-    curretCount = int(os.getenv('CHUNK_SIZE', 10))
-    print('Chunk size:', curretCount)
-    print('Processing data files...')
-
-    if not current_file:
-        print('No data files to process.')
+    if not lock_job():
+        print('Job is already running. Exiting.')
         return
-    
-    print('Current file:', current_file, current_file_id, curretCount)
 
+    try:
+        bucket = BucketManager()
+        folder = os.getenv('DATA_FOLDER', 'data/')
+        print('Data folder:', folder)
+        # Get current file
+        current_file, current_file_id, curretCount = get_current_file(folder)
+        
+        curretCount = int(os.getenv('CHUNK_SIZE', 10))
+        print('Chunk size:', curretCount)
+        print('Processing data files...')
 
-    data_files, total_count, count_result, new_file_id = bucket.process_info_file(start_index=current_file_id, count=curretCount, folder=folder)
-    result = [PresentationParams(**item) for item in data_files]
-    
-    #info file path
-    info_file_path = 'infoFile.json';
+        if not current_file:
+            print('No data files to process.')
+            return
+        
+        print('Current file:', current_file, current_file_id, curretCount)
 
-    results = await process_all_presentations(result)
-   
-    
-    update_info_file(info_file_path, new_file_id)
-    
-    print('Data files processed and results updated.')
+        data_files, total_count, count_result, new_file_id = bucket.process_info_file(start_index=current_file_id, count=curretCount, folder=folder)
+        result = [PresentationParams(**item) for item in data_files]
+        
+        #info file path
+        info_file_path = 'infoFile.json';
 
-      # Upload result.json to S3
-    s3_key = f"{folder}{current_file}_result.json"
-    public_url = append_results_to_s3(s3_key, results)
-    print('Public URL:', public_url)
-    print('Before update state info', current_file, count_result, total_count, s3_key)
-    update_state_info(current_file, count_result, total_count, s3_key)
-    #upload infoFile.json to S3
-    s3_keyInfo = f"{folder}infoResults.json"
-    #public for infoFile.json
-    bucket.upload_file_to_data_s3(info_file_path, s3_keyInfo)
-    bucket.addPublicAccess(s3_keyInfo)
-     #print public url for infoFile.json
-    public_urlInfo = bucket.getPublicUrl(s3_keyInfo)
-    print('Public URL Info:', public_urlInfo)
+        results = await process_all_presentations(result)
+        
+        update_info_file(info_file_path, new_file_id)
+        
+        print('Data files processed and results updated.')
+
+        # Upload result.json to S3
+        s3_key = f"{folder}{current_file}_result.json"
+        public_url = append_results_to_s3(s3_key, results)
+        print('Public URL:', public_url)
+        print('Before update state info', current_file, count_result, total_count, s3_key)
+        update_state_info(current_file, count_result, total_count, s3_key)
+        #upload infoFile.json to S3
+        s3_keyInfo = f"{folder}infoResults.json"
+        #public for infoFile.json
+        bucket.upload_file_to_data_s3(info_file_path, s3_keyInfo)
+        bucket.addPublicAccess(s3_keyInfo)
+        #print public url for infoFile.json
+        public_urlInfo = bucket.getPublicUrl(s3_keyInfo)
+        print('Public URL Info:', public_urlInfo)
+
+    finally:
+        unlock_job()
+        print('Job finished.')
+
+# Время блокировки можно настроить в зависимости от задачи.
+
 
 async def scheduler():
-    #use env variable to set the time
     minutes = int(os.getenv('CRON_TIME', 1))
     print('Scheduler started. Running job every', minutes, 'minutes.')
+    
     while True:
-        await job()
-        await asyncio.sleep(minutes * 60)  # Run the job every `minutes` minutes
+        if not os.path.exists('job.lock'):
+            await job()  # Запуск задачи
+        else:
+            print('Job is already running. Skipping this iteration.')
 
+        await asyncio.sleep(minutes * 60)  # Подождать `minutes` минут
+        
 if __name__ == "__main__":
-    # Настройка логирования
     logging.basicConfig(level=logging.INFO)
-
-    # Запуск планировщика
+    
+    # Удаление блокировочного файла при перезапуске
+    lock_file = 'job.lock'
+    if os.path.exists(lock_file):
+        os.remove(lock_file)
+    
     asyncio.run(scheduler())
