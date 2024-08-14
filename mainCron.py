@@ -54,7 +54,7 @@ def append_results_to_s3(s3_key, new_results):
 
 
 
-def update_state_info(current_file: str, processed_elements: int, total_elements: int, result_file: str = ""):
+def update_state_info(current_file: str,  processed_elements: int, total_elements: int, result_file: str = ""):
     info_file_path = 'infoFile.json'
     
     # Чтение infoFile.json
@@ -257,7 +257,7 @@ async def job():
         
         print('Current file:', current_file, current_file_id, curretCount)
 
-        data_files, total_count, count_result, new_file_id = bucket.process_info_file(start_index=current_file_id, count=curretCount, folder=folder)
+        data_files, total_count, count_result, new_file_id = bucket.process_info_file(start_id=current_file_id, count=curretCount, folder=folder)
         result = [PresentationParams(**item) for item in data_files]
         
         #info file path
@@ -302,7 +302,7 @@ async def scheduler():
             print('Job is already running. Skipping this iteration.')
 
         await asyncio.sleep(minutes * 60)  # Подождать `minutes` минут
-        
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     
