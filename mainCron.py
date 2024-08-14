@@ -197,11 +197,16 @@ async def process_all_presentations(data_files: List[PresentationParams]):
     results = []
     
     for presentation_info in data_files:
-        result_url = await process_single_presentation(presentation_info)
-        results.append({
-            'id': presentation_info.id,
-            'result_url': result_url
-        })
+        try:
+            result_url = await process_single_presentation(presentation_info)
+            results.append({
+                'id': presentation_info.id,
+                'result_url': result_url
+            })
+        except Exception as e:
+            # Можно добавить логирование ошибки, если нужно
+            print(f"Error processing presentation {presentation_info.id}: {e}")
+            continue
 
     return results
 
