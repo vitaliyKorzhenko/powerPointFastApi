@@ -187,6 +187,6 @@ async def process_single_presentation(presentationInfo: PresentationParams):
         return bucket.saveFileToFolderAndGetPublicUrl(resultName, folder, result_stream.read())
 
     except Exception as e:
-        print(f"Error: {e.detail}")
+        print(f"Error: process_single_presentation")
         return ""
 
