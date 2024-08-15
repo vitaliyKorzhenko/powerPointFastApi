@@ -301,7 +301,7 @@ async def scheduler():
         else:
             print('Job is already running. Skipping this iteration.')
 
-        await asyncio.sleep(minutes * 60)  # Подождать `minutes` минут
+        #await asyncio.sleep(minutes * 60)  # Подождать `minutes` минут
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
