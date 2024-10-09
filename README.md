@@ -54,3 +54,7 @@ pgrep -f mainCron.py -
 kill id
 # jobs
 jobs
+
+
+# venv
+/.venvsource
