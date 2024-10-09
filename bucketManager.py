@@ -244,6 +244,62 @@ class BucketManager:
         return result_items, total_count, count_result, next_start_id
   
 
+
+    def process_info_fileNew(self, current_file, start_id=None, count=10, folder = 'data/'):
+        
+        print('======== process_info_fileNew =========', current_file, start_id, count, folder)
+        # Получение содержимого файла из папки data
+        file_content = self.get_object_body(f'{folder}{current_file}')
+        data = json.loads(file_content)
+
+        # Получаем массив presentations
+        presentations = data.get('presentations', [])
+
+        # Преобразуем список презентаций в словарь для быстрого поиска по ID
+        presentations_dict = {item['id']: item for item in presentations}
+
+        # Если start_id не указан, начнем с первого элемента
+        if start_id is None or start_id == 0:
+            start_id = min(presentations_dict.keys())
+        else:
+            # Проверка, что start_id существует в словаре
+            if start_id not in presentations_dict:
+                print(f"Указан start_id, который не существует: {start_id}.")
+                return [], len(presentations_dict), 0, start_id
+
+     # Собираем элементы начиная с start_id и двигаемся по чанкам
+        result_items = []
+        ids_processed = 0
+        current_id = start_id
+
+        while ids_processed < count and current_id in presentations_dict:
+            result_items.append(presentations_dict[current_id])
+            ids_processed += 1
+            # Переходим к следующему ID в списке
+            next_ids = sorted(presentations_dict.keys())
+            current_id_index = next_ids.index(current_id) + 1
+            if current_id_index < len(next_ids):
+                current_id = next_ids[current_id_index]
+            else:
+                break
+
+        # Определяем количество выбранных элементов
+        count_result = len(result_items)
+        total_count = len(presentations_dict)
+
+        # Печать результатов
+        print(f"Общее количество элементов в файле: {total_count}")
+        print(f"Количество элементов после ID {start_id}: {count_result}")
+
+        if count_result > 0:
+            print("Элементы есть - количество элементов:", count_result)
+        else:
+            print("Нет элементов.")
+    
+        # Возвращаем список результатов, общее количество элементов и следующий ID для продолжения
+        next_start_id = current_id if current_id in presentations_dict else None
+        return result_items, total_count, count_result, next_start_id
+
     def upload_string_to_s3(self, string_data, s3_key):
         try:
          # Используем метод put объекта S3 для загрузки данных

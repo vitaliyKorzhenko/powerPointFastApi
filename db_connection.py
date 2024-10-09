@@ -1,23 +1,19 @@
 import psycopg2
-import urllib.parse as up
-
-# External Database URL
-database_url = "postgres://govorikapresentations_user:gf7LBmzPmQubL6flpA5CzcpDpFWmEi0Y@dpg-crnvgul6l47c73al9tpg-a.oregon-postgres.render.com:5432/govorikapresentations"
-
-# Парсинг URL
-url = up.urlparse(database_url)
 
 def get_connection():
     try:
+        # Подключение к базе данных AWS RDS
         conn = psycopg2.connect(
-            dbname=url.path[1:],  # убираем первый символ "/"
-            user=url.username,
-            password=url.password,
-            host=url.hostname,
-            port=url.port
+            dbname="python-db",  # название базы данных на RDS
+            user="tskmd",  # имя пользователя
+            password="nY9q+x4Hf6!-z",  # пароль
+            host="python-db.c3btgkurkirn.eu-north-1.rds.amazonaws.com",  # хост RDS
+            port="5432"  # порт
         )
         print("Successfully connected to the database!")
         return conn
     except Exception as e:
         print(f"Error connecting to database: {e}")
         return None
+    
+get_connection()

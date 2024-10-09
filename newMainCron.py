@@ -13,87 +13,106 @@ conn = get_connection()
 #chunk_size = 10
 count = 10
 
+
 def append_results_to_s3(s3_key, new_results):
     bucket_manager = BucketManager()
 
     try:
-        # Получаем текущий результатный файл с S3
-        existing_data = bucket_manager.get_object_body(s3_key)
-        existing_data = json.loads(existing_data) if existing_data else []
-    except ClientError as e: # type: ignore
-        error_code = e.response['Error']['Code']
-        if error_code == 'NoSuchKey':
-            existing_data = []  # Если файла нет, задаем пустой список
-        else:
-            raise
+        # Попытка получить текущие данные из S3
+        try:
+            existing_data = bucket_manager.get_object_body(s3_key)
+            existing_data = json.loads(existing_data) if existing_data else []
+            print(f"Existing data loaded from {s3_key}")
+        except ClientError as e: # type: ignore
+            error_code = e.response['Error']['Code']
+            if error_code == 'NoSuchKey':
+                print(f"Key {s3_key} does not exist. Creating a new file with results.")
+                existing_data = []  # Если файла нет, задаем пустой список
+            else:
+                print(f"Error fetching data from S3: {e}")
+                return None  # Прерываем выполнение при других ошибках
 
-    if not isinstance(existing_data, list):
-        existing_data = []
+        # Убедимся, что данные - это список, если нет, создаем новый список
+        if not isinstance(existing_data, list):
+            print("Existing data is not a list, initializing as empty list.")
+            existing_data = []
 
-    existing_data.extend(new_results)
+        # Добавляем новые результаты к существующим данным
+        existing_data.extend(new_results)
+        updated_data = json.dumps(existing_data, indent=4)
 
-    updated_data = json.dumps(existing_data, indent=4)
+        # Загружаем обновленные данные на S3
+        try:
+            bucket_manager.upload_string_to_s3(updated_data, s3_key)
+            print(f"Uploaded updated data to {s3_key}")
+        except ClientError as e:  # type: ignore
+            print(f"Error uploading data to S3: {e}")
+            return None
 
-    # Загружаем обновленный файл обратно на S3 (или создаем новый)
-    bucket_manager.upload_string_to_s3(updated_data, s3_key)
+        # Проверка существования файла и установка публичного доступа
+        try:
+            bucket_manager.get_object_body(s3_key)  # Проверка существования
+            bucket_manager.addPublicAccess(s3_key)
+            print(f"Public access granted for {s3_key}")
+        except ClientError as e: # type: ignore
+            error_code = e.response['Error']['Code']
+            if error_code == 'NoSuchKey':
+                print(f"Object {s3_key} does not exist. Cannot set public access.")
+            else:
+                print(f"Error setting public access: {e}")
+                return None
 
-    # Проверяем наличие файла перед установкой публичного доступа
-    try:
-        bucket_manager.get_object_body(s3_key)  # Проверка существования
-        bucket_manager.addPublicAccess(s3_key)
-    except ClientError as e: # type: ignore
-        error_code = e.response['Error']['Code']
-        if error_code == 'NoSuchKey':
-            print(f"Object {s3_key} does not exist. Cannot set public access.")
-        else:
-            raise
+        # Получаем публичный URL
+        public_url = bucket_manager.getPublicUrl(s3_key)
+        print(f"Updated {s3_key} on S3 with {len(new_results)} new results. Public URL: {public_url}")
+        return public_url
 
-    public_url = bucket_manager.getPublicUrl(s3_key)
-    print(f"Updated {s3_key} on S3 with {len(new_results)} new results. Public URL: {public_url}")
-
-    return public_url
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        return None
 
 
 
-def update_state_info(current_file: str, processed_elements: int, total_elements: int, result_file: str = ""):
+
+def update_state_info(current_file: str, currentpresentationid: int, processed_elements: int, total_elements: int, result_file: str = ""):
     try:
         cur = conn.cursor()
 
         # Проверка, существует ли уже запись для текущего файла
         check_file_query = '''
-        SELECT id, processed_elements, total_elements FROM files WHERE file_name = %s
+        SELECT id, currentpresentationid, processed_elements, total_elements FROM files WHERE file_name = %s
         '''
         cur.execute(check_file_query, (current_file,))
         file_record = cur.fetchone()
 
         if file_record:
-            # Если запись существует, обновляем ее
-            file_id, current_processed_elements, current_total_elements = file_record
+            file_id, db_currentpresentationid, db_processed_elements, db_total_elements = file_record
 
-            # Обновляем processed_elements, result_file, total_elements и статус
-            new_processed_elements = current_processed_elements + processed_elements
+            # Обновляем значения processed_elements, result_file, total_elements и статус
+            new_processed_elements = db_processed_elements + processed_elements
             status = 'finished' if new_processed_elements >= total_elements else 'processed'
 
             update_file_query = '''
             UPDATE files 
-            SET processed_elements = %s, total_elements = %s, result_file = %s, status = %s 
+            SET processed_elements = %s, total_elements = %s, result_file = %s, status = %s, currentpresentationid = %s 
             WHERE id = %s
             '''
             cur.execute(update_file_query, (
-                new_processed_elements, total_elements, result_file, status, file_id
+                new_processed_elements, total_elements, result_file, status, currentpresentationid, file_id
             ))
         else:
             # Если записи нет, создаем новую
             status = 'finished' if processed_elements >= total_elements else 'processed'
 
             insert_file_query = '''
-            INSERT INTO files (file_name, status, total_elements, processed_elements, result_file) 
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO files (file_name, status, total_elements, processed_elements, result_file, currentpresentationid) 
+            VALUES (%s, %s, %s, %s, %s, %s)
             '''
             cur.execute(insert_file_query, (
-                current_file, status, total_elements, processed_elements, result_file
+                current_file, status, total_elements, processed_elements, result_file, currentpresentationid
             ))
 
+        # Фиксируем изменения
         conn.commit()
         print(f"Updated stateInfo for {current_file}: {processed_elements}/{total_elements} elements processed.")
     
@@ -103,7 +122,7 @@ def update_state_info(current_file: str, processed_elements: int, total_elements
     
     finally:
         cur.close()
-        conn.close()
+
 
 
 
@@ -113,7 +132,7 @@ def get_current_processed_file(conn):
 
     try:
         # Ищем файл со статусом 'processed'
-        cur.execute('SELECT file_name, id FROM files WHERE status = %s LIMIT 1', ('processed',))
+        cur.execute('SELECT file_name, currentpresentationid FROM files WHERE status = %s LIMIT 1', ('processed',))
         result = cur.fetchone()
 
         if result:
@@ -138,11 +157,11 @@ def insert_new_file(conn, file_name):
 
         # SQL-запрос для добавления нового файла в таблицу
         insert_query = '''
-        INSERT INTO files (file_name, status, total_elements, processed_elements, result_file)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO files (file_name, status, total_elements, processed_elements, result_file, aws_status, currentpresentationid)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         RETURNING id
         '''
-        cur.execute(insert_query, (file_name, 'processed', 0, 0, ''))
+        cur.execute(insert_query, (file_name, 'processed', 0, 0, '', False, 0))
         conn.commit()
 
         # Получаем ID вставленной записи
@@ -162,20 +181,22 @@ def insert_new_file(conn, file_name):
 def get_current_file(conn, folder='data/'):
     # Проверяем наличие файла со статусом 'processed' в базе данных
     current_file, current_file_id = get_current_processed_file(conn)
-    
+    print("CURRENT FILE ========", current_file, current_file_id)
     # Если найден файл со статусом 'processed', возвращаем его
     if current_file:
-        # Предполагается, что 'count' также может храниться в базе, если необходимо
-        count = 3  # Это значение можно поменять или вытащить из базы при необходимости
-        return current_file, current_file_id, count
+        return current_file, current_file_id
     
     # Если нет файла со статусом 'processed', получаем файлы из папки
     bucket = BucketManager()
     data_files = bucket.get_files_in_data_folder(folder)
+
+    print('DATA FILES!!', data_files)
     
     if not data_files:
         print("No files found in 'data' folder.")
         return None, None, None
+    
+
     
     # Ищем первый JSON-файл, который не является результатом и отсутствует в базе
     for file in data_files:
@@ -195,11 +216,12 @@ def get_current_file(conn, folder='data/'):
         print("All files in 'data' folder are already processed.")
         return None, None, None
     
+    print('Go INSET FILE!!', current_file);
     # Если найден новый файл, добавляем его в базу данных
     current_file_id = insert_new_file(conn, current_file)
     
-    # Возвращаем новый текущий файл и его ID
-    return current_file, current_file_id, 3  # 'count' можно адаптировать при необходимости
+    # Возвращаем новый текущий файл и его сохраненный ид пока тоже 0! ибо мы создали новый файл!
+    return current_file, 0 
 
 
 async def process_all_presentations(data_files: List[PresentationParams]):
@@ -207,7 +229,9 @@ async def process_all_presentations(data_files: List[PresentationParams]):
     
     for presentation_info in data_files:
         try:
+            print("START SINGLE", presentation_info)
             result_url = await process_single_presentation(presentation_info)
+            print('FINISH SINGE', result_url);
             results.append({
                 'id': presentation_info.id,
                 'result_url': result_url
@@ -246,8 +270,8 @@ async def job():
         folder = os.getenv('DATA_FOLDER', 'data/')
         print('Data folder:', folder)
         # Get current file
-        current_file, current_file_id, curretCount = get_current_file(folder)
-        
+        current_file, current_file_id = get_current_file(get_connection(), folder)
+        print('CURRENT FILE!!!', current_file, current_file_id);
         curretCount = int(os.getenv('CHUNK_SIZE', 10))
         print('Chunk size:', curretCount)
         print('Processing data files...')
@@ -258,8 +282,10 @@ async def job():
         
         print('Current file:', current_file, current_file_id, curretCount)
 
-        data_files, total_count, count_result, new_file_id = bucket.process_info_file(start_id=current_file_id, count=curretCount, folder=folder)
+        data_files, total_count, count_result, new_presentation_id = bucket.process_info_fileNew(current_file, start_id=current_file_id, count=curretCount, folder=folder)
         result = [PresentationParams(**item) for item in data_files]
+
+        print("========== RESULT PRESENTATION =====", result)
         
         results = await process_all_presentations(result)
                 
@@ -270,15 +296,8 @@ async def job():
         public_url = append_results_to_s3(s3_key, results)
         print('Public URL:', public_url)
         print('Before update state info', current_file, count_result, total_count, s3_key)
-        update_state_info(current_file, count_result, total_count, s3_key)
-        #upload infoFile.json to S3
-        s3_keyInfo = f"{folder}infoResults.json"
-        #public for infoFile.json
-        bucket.addPublicAccess(s3_keyInfo)
-        #print public url for infoFile.json
-        public_urlInfo = bucket.getPublicUrl(s3_keyInfo)
-        print('Public URL Info:', public_urlInfo)
-
+        update_state_info(current_file, new_presentation_id, count_result, total_count, s3_key)
+  
     finally:
         unlock_job()
         print('Job finished.')
@@ -287,16 +306,16 @@ async def job():
 
 
 async def scheduler():
-    minutes = int(os.getenv('CRON_TIME', 1))
+    #minutes = int(os.getenv('CRON_TIME', 1))
+    minutes = 1
     print('Scheduler started. Running job every', minutes, 'minutes.')
     
     while True:
         if not os.path.exists('job.lock'):
+            print('WE GO RUN JOB JOB')
             await job()  # Запуск задачи
         else:
             print('Job is already running. Skipping this iteration.')
-
-        #await asyncio.sleep(minutes * 60)  # Подождать `minutes` минут
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

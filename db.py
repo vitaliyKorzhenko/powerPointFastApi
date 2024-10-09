@@ -4,24 +4,24 @@ import urllib.parse as up
 # External Database URL
 database_url = "postgres://govorikapresentations_user:gf7LBmzPmQubL6flpA5CzcpDpFWmEi0Y@dpg-crnvgul6l47c73al9tpg-a.oregon-postgres.render.com:5432/govorikapresentations"
 
-# Парсинг URL
+# url
 url = up.urlparse(database_url)
 
-# Подключение к базе данных
+# connect to db
 try:
     conn = psycopg2.connect(
-        dbname=url.path[1:],  # убираем первый символ "/"
-        user=url.username,
-        password=url.password,
-        host=url.hostname,
-        port=url.port
+       dbname="python-db",  # название базы данных на RDS
+       user="tskmd",  # имя пользователя
+       password="nY9q+x4Hf6!-z",  # пароль
+       host="python-db.c3btgkurkirn.eu-north-1.rds.amazonaws.com",  # хост RDS
+       port="5432"  # порт
     )
     print("Successfully connected to the database!")
 
-    # создаем курсор
+    # create cursor
     cur = conn.cursor()
 
-    # SQL-запрос для создания таблицы
+    # SQL-create table
     create_table_query = '''
     CREATE TABLE files (
         id SERIAL PRIMARY KEY,
@@ -30,16 +30,15 @@ try:
         total_elements INT,
         processed_elements INT,
         result_file VARCHAR(255),
+        aws_status INT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     '''
 
-    # выполнение запроса
     cur.execute(create_table_query)
     conn.commit()
     print("Table created successfully!")
 
-    # закрываем соединение
     cur.close()
     conn.close()
 
