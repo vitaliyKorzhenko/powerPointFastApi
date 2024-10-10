@@ -192,7 +192,7 @@ def get_current_file(conn, folder='data/'):
     
     if not data_files:
         print("No files found in 'data' folder.")
-        return None, None, None
+        return None, None
     
 
     
@@ -212,7 +212,7 @@ def get_current_file(conn, folder='data/'):
                 break
     else:
         print("All files in 'data' folder are already processed.")
-        return None, None, None
+        return None, None
     
     print('Go INSET FILE!!', current_file);
     # Если найден новый файл, добавляем его в базу данных
