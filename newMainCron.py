@@ -8,6 +8,7 @@ import os
 import re
 import time
 from db_connection import get_connection
+from botocore.exceptions import ClientError
 
 conn = get_connection()
 #chunk_size = 10
