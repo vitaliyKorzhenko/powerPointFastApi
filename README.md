@@ -58,3 +58,17 @@ jobs
 
 # venv
 /.venvsource
+
+
+# как запустить сервак 
+
+
+source venv/bin/activate
+# new cron (работает с базой) 
+nohup python3 newMainCron.py > newLogs.out 2>&1 & 
+# logs
+tail newLogs.out (плюс можно смотреть новые строки в базе)
+
+# old cron (работает с файлом)
+nohup python3 mainCron.py & 
+tail nohup.out
