@@ -189,8 +189,6 @@ def get_current_file(conn, folder='data/'):
     # Если нет файла со статусом 'processed', получаем файлы из папки
     bucket = BucketManager()
     data_files = bucket.get_files_in_data_folder(folder)
-
-    print('DATA FILES!!', data_files)
     
     if not data_files:
         print("No files found in 'data' folder.")
@@ -285,7 +283,7 @@ async def job():
         data_files, total_count, count_result, new_presentation_id = bucket.process_info_fileNew(current_file, start_id=current_file_id, count=curretCount, folder=folder)
         result = [PresentationParams(**item) for item in data_files]
 
-        print("========== RESULT PRESENTATION =====", result)
+        print("========== RESULT PRESENTATION =====")
         
         results = await process_all_presentations(result)
                 
