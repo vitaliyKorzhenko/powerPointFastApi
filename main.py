@@ -15,6 +15,8 @@ from pathvalidate import replace_symbol, sanitize_filename
 import io
 from pptx.util import Inches
 from typing import List
+import time
+import asyncio
 
 #initialize app
 app = FastAPI()
@@ -273,67 +275,13 @@ def replace_image_background_in_presentation_withoutResize (prs, media_uniq_name
 
 
 
-
-@app.post("/presentation/parsing")
-async def parse_presentation(name: str):
-    print('START')
-    bucket = BucketManager()
-    if (bucket.file_exists('pptx', name)):
-        file = bucket.getObjectBody('pptx/' + name)
-        file_stream = BytesIO(file)
-        presentation = pptx.Presentation(file_stream)
-        images = parse_pptx(presentation)
-        return images
-    else:
-        return HTTPException(status_code=404, detail="File not found")
-
-
 #class for body params
 class PresentationParseParams(BaseModel):
     presentation: str
     #replacemnt array object media_unique_name: string, assets_file: string
 
-#parisng by link
-@app.post("/presentation/parsingByUrl")
-async def parse_presentation_by_url(param: PresentationParseParams):
-    print('START')
-    file_stream = download_file(param.presentation)
-    if not file_stream:
-        return HTTPException(status_code=404, detail="Presentation file not found")
-    presentation = pptx.Presentation(file_stream)
-    images = parse_pptx(presentation)
-    return images
-    
-@app.get("/presentation/getTemplates")
-async def get_templates():
-    bucket = BucketManager()
-    templates = bucket.get_files('pptx')
-    return templates
 
 
-
-#images pptx get
-@app.get("/presentation/getImages")
-async def get_templates():
-    bucket = BucketManager()
-    templates = bucket.get_files('img')
-    return templates
-
-#get files from results (folder results) 
-@app.get("/presentation/getResults")
-async def get_results():
-    bucket = BucketManager()
-    results = bucket.get_files('pptx')
-    return results
-
-
-
-#get thumbnails from thumbnails folder
-@app.get("/presentation/getThumbnails")
-async def get_thumbnails():
-    bucket = BucketManager()
-    thumbnails = bucket.get_files('thumbnails')
-    return thumbnails
 
 #class for body params
 class PresentationParams(BaseModel):
@@ -375,104 +323,339 @@ def download_file(url):
         return None
 
 
-                                   
-@app.post("/presentation/generateNewPresentationUseUrl")
-async def generateNewPresentationUseUrl(presentationInfo: PresentationParams):
+async def cache_image_async(bucket, imageBucket, item):
+    try:
+        if not (item.get('media_unique_name') and item.get('assets_file')):
+            return None, None
+            
+        if not bucket.file_exists(imageBucket, item["assets_file"]):
+            print(f"File not found in bucket: {item['assets_file']}")
+            return None, None
+            
+        image = bucket.getObjectBody(imageBucket + '/' + item['assets_file'])
+        if not image:
+            print(f"Failed to get image from bucket: {item['assets_file']}")
+            return None, None
+            
+        return item['assets_file'], BytesIO(image)
+    except Exception as e:
+        print(f"Error caching image {item['assets_file']}: {str(e)}")
+        return None, None
+
+@app.post("/presentation/generateNewPresentationUseUrlOld")
+async def generateNewPresentationUseUrlOld(presentationInfo: PresentationParams):
+    start_time = time.time()
     print('BODY', presentationInfo)
     imageBucket = 'img'
     presentation_url = presentationInfo.presentation
     bucket = BucketManager()
+    
+    # Загружаем презентацию
+    download_start = time.time()
+    print('Downloading presentation from:', presentation_url)
     file_stream = download_file(presentation_url)
     if not file_stream:
         return HTTPException(status_code=404, detail="Presentation file not found")
-    #print("fileSTREAM NOT NONE");
+    download_end = time.time()
+    print(f"Time to download presentation: {download_end - download_start:.2f} seconds")
+    
+    # Открываем презентацию
+    open_start = time.time()
+    print("File stream downloaded successfully")
     presentation = pptx.Presentation(file_stream)
-    #images = parse_pptx(presentation);
-    #print("IMAGES IN PR", images);
     result_stream = BytesIO()
+    open_end = time.time()
+    print(f"Time to open presentation: {open_end - open_start:.2f} seconds")
+    
+    # Начинаем отсчет времени замены изображений
+    replace_start_time = time.time()
     for item in presentationInfo.replacements:
             if item.get('media_unique_name') and item.get('assets_file'):
-                #print("GO GO GO", item['media_unique_name'], item['assets_file'])
+                print("Processing replacement:", item['media_unique_name'], item['assets_file'])
                 if bucket.file_exists(imageBucket, item["assets_file"]):
+                    print("File exists in bucket")
                     image = bucket.getObjectBody(imageBucket + '/' + item['assets_file'])
                     if not image:
+                        print("Failed to get image from bucket")
                         return HTTPException(status_code=404, detail="Image not found")
+                    print("Got image from bucket")
                     byteImgIO = BytesIO(image)
                     byteImgIO.seek(0)
                     with byteImgIO as image_stream:
-                        if item["type"] == "background":
-                            result_prs = replace_image_background_in_presentation_withoutResize(presentation, item['media_unique_name'], image_stream)
-                        else:    
-                            result_prs = replace_image_in_presentation(presentation, item['media_unique_name'], image_stream)
-                        if not result_prs:
-                            return HTTPException(status_code=404, detail="Image not found")
-                        else:
-                            # Update presentation
-                            presentation = result_prs
-                            #delete byteImgIO
-                    
+                        try:
+                            item_start_time = time.time()
+                            if item["type"] == "background":
+                                print("Replacing background image")
+                                result_prs = replace_image_background_in_presentation_withoutResize(presentation, item['media_unique_name'], image_stream)
+                            else:    
+                                print("Replacing regular image")
+                                result_prs = replace_image_in_presentation(presentation, item['media_unique_name'], image_stream)
+                            item_end_time = time.time()
+                            print(f"Time to replace image {item['media_unique_name']}: {item_end_time - item_start_time:.2f} seconds")
+                            
+                            if not result_prs:
+                                print("Failed to replace image")
+                                return HTTPException(status_code=404, detail="Image not found")
+                            else:
+                                print("Image replaced successfully")
+                                presentation = result_prs
+                        except Exception as e:
+                            print("Error during image replacement:", str(e))
+                            raise HTTPException(status_code=500, detail=str(e))
+                else:
+                    print("File not found in bucket:", item["assets_file"])
+                    return HTTPException(status_code=404, detail=f"Image {item['assets_file']} not found in bucket")
             else:
                 return HTTPException(status_code=404, detail="Invalid replacement item")
+    
+    replace_end_time = time.time()
+    print(f"Total time for all image replacements: {replace_end_time - replace_start_time:.2f} seconds")
 
-        # Save updated presentation to results folder
+    # Сохраняем результат
+    save_start = time.time()
+    print("Saving presentation")
     presentation.save(result_stream)
     result_stream.seek(0)
+    save_end = time.time()
+    print(f"Time to save presentation: {save_end - save_start:.2f} seconds")
+    
     cleanedName = replace_symbol(presentationInfo.resultFileName) + '.pptx'
     resultName = re.sub(r'[^\x00-\x7f]',r'', cleanedName) 
-    #print("RESULT CLEANED", resultName);
+    print("Returning presentation with name:", resultName)
+
+    end_time = time.time()
+    print(f"Total execution time: {end_time - start_time:.2f} seconds")
+    print("\nDetailed time breakdown:")
+    print(f"- Download presentation: {download_end - download_start:.2f} seconds")
+    print(f"- Open presentation: {open_end - open_start:.2f} seconds")
+    print(f"- Replace images: {replace_end_time - replace_start_time:.2f} seconds")
+    print(f"- Save presentation: {save_end - save_start:.2f} seconds")
+    print(f"- Other operations: {end_time - start_time - (download_end - download_start) - (open_end - open_start) - (replace_end_time - replace_start_time) - (save_end - save_start):.2f} seconds")
 
     return StreamingResponse(BytesIO(result_stream.read()), media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation', headers={'Content-Disposition': f'attachment; filename="{resultName}"'})
 
-
-                                 
-@app.post("/presentation/loadNewPresentationToBucketUseUrl")
-async def loadNewPresentationToBucketUseUrl(presentationInfo: PresentationParams):
+@app.post("/presentation/generateNewPresentationUseUrlUseCashOld")
+async def generateNewPresentationUseUrlUseCashOld(presentationInfo: PresentationParams):
+    start_time = time.time()
     print('BODY', presentationInfo)
     imageBucket = 'img'
     presentation_url = presentationInfo.presentation
     bucket = BucketManager()
-    file_stream = download_file(presentation_url)
-    if not file_stream:
-        return HTTPException(status_code=404, detail="Presentation file not found")
-    #print("fileSTREAM NOT NONE");
-    presentation = pptx.Presentation(file_stream)
-    #images = parse_pptx(presentation);
-    #print("IMAGES IN PR", images);
-    result_stream = BytesIO()
-    for item in presentationInfo.replacements:
-            if item.get('media_unique_name') and item.get('assets_file'):
-                #print("GO GO GO", item['media_unique_name'], item['assets_file'])
-                if bucket.file_exists(imageBucket, item["assets_file"]):
-                    image = bucket.getObjectBody(imageBucket + '/' + item['assets_file'])
-                    if not image:
-                        return HTTPException(status_code=404, detail="Image not found")
-                    byteImgIO = BytesIO(image)
-                    byteImgIO.seek(0)
-                    with byteImgIO as image_stream:
-                        if item["type"] == "background":
-                            result_prs = replace_image_background_in_presentation_withoutResize(presentation, item['media_unique_name'], image_stream)
-                        else:    
-                            result_prs = replace_image_in_presentation(presentation, item['media_unique_name'], image_stream)
-                        if not result_prs:
-                            return HTTPException(status_code=404, detail="Image not found")
-                        else:
-                            # Update presentation
-                            presentation = result_prs
-                            #delete byteImgIO
-                    
-            else:
+    
+    try:
+        # Загружаем презентацию
+        download_start = time.time()
+        file_stream = download_file(presentation_url)
+        if not file_stream:
+            return HTTPException(status_code=404, detail="Presentation file not found")
+        download_end = time.time()
+        print(f"Time to download presentation: {download_end - download_start:.2f} seconds")
+        
+        # Открываем презентацию
+        open_start = time.time()
+        presentation = pptx.Presentation(file_stream)
+        result_stream = BytesIO()
+        open_end = time.time()
+        print(f"Time to open presentation: {open_end - open_start:.2f} seconds")
+        
+        # Предварительно загружаем все изображения
+        cache_start = time.time()
+        image_cache = {}
+        for item in presentationInfo.replacements:
+            if not (item.get('media_unique_name') and item.get('assets_file')):
                 return HTTPException(status_code=404, detail="Invalid replacement item")
+                
+            if not bucket.file_exists(imageBucket, item["assets_file"]):
+                return HTTPException(status_code=404, detail=f"Image {item['assets_file']} not found in bucket")
+                
+            # Загружаем изображение в кэш
+            image = bucket.getObjectBody(imageBucket + '/' + item['assets_file'])
+            if not image:
+                return HTTPException(status_code=404, detail="Image not found")
+            image_cache[item['assets_file']] = BytesIO(image)
+        
+        cache_end = time.time()
+        print(f"Time to cache all images: {cache_end - cache_start:.2f} seconds")
+        
+        # Начинаем отсчет времени замены изображений
+        replace_start_time = time.time()
+        # Обрабатываем все замены
+        for item in presentationInfo.replacements:
+            try:
+                image_stream = image_cache[item['assets_file']]
+                image_stream.seek(0)
+                
+                item_start_time = time.time()
+                if item["type"] == "background":
+                    result_prs = replace_image_background_in_presentation_withoutResize(presentation, item['media_unique_name'], image_stream)
+                else:    
+                    result_prs = replace_image_in_presentation(presentation, item['media_unique_name'], image_stream)
+                item_end_time = time.time()
+                print(f"Time to replace image {item['media_unique_name']}: {item_end_time - item_start_time:.2f} seconds")
+                    
+                if not result_prs:
+                    return HTTPException(status_code=404, detail="Image not found")
+                    
+                presentation = result_prs
+                
+            except Exception as e:
+                print("Error during image replacement:", str(e))
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        replace_end_time = time.time()
+        print(f"Total time for all image replacements: {replace_end_time - replace_start_time:.2f} seconds")
+        
+        # Сохраняем результат
+        save_start = time.time()
+        presentation.save(result_stream)
+        result_stream.seek(0)
+        save_end = time.time()
+        print(f"Time to save presentation: {save_end - save_start:.2f} seconds")
+        
+        cleanedName = replace_symbol(presentationInfo.resultFileName) + '.pptx'
+        resultName = re.sub(r'[^\x00-\x7f]',r'', cleanedName) 
 
-        # Save updated presentation to results folder
-    presentation.save(result_stream)
-    result_stream.seek(0)
-    cleanedName = replace_symbol(presentationInfo.resultFileName) + '.pptx'
-    resultName = re.sub(r'[^\x00-\x7f]',r'', cleanedName) 
-    folder = 'tests/'
-    return bucket.saveFileToFolderAndGetPublicUrl(resultName, folder, result_stream.read())
+        end_time = time.time()
+        print(f"Total execution time: {end_time - start_time:.2f} seconds")
+        print("\nDetailed time breakdown:")
+        print(f"- Download presentation: {download_end - download_start:.2f} seconds")
+        print(f"- Open presentation: {open_end - open_start:.2f} seconds")
+        print(f"- Cache images: {cache_end - cache_start:.2f} seconds")
+        print(f"- Replace images: {replace_end_time - replace_start_time:.2f} seconds")
+        print(f"- Save presentation: {save_end - save_start:.2f} seconds")
+        print(f"- Other operations: {end_time - start_time - (download_end - download_start) - (open_end - open_start) - (cache_end - cache_start) - (replace_end_time - replace_start_time) - (save_end - save_start):.2f} seconds")
+
+        return StreamingResponse(
+            BytesIO(result_stream.read()), 
+            media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation', 
+            headers={'Content-Disposition': f'attachment; filename="{resultName}"'}
+        )
+    finally:
+        # Очищаем кэш и освобождаем память
+        if 'image_cache' in locals():
+            for stream in image_cache.values():
+                stream.close()
+            image_cache.clear()
+        print("Memory cleared: image cache has been freed")
+
+@app.post("/presentation/generateNewPresentationUseUrl")
+async def generateNewPresentationUseUrl(presentationInfo: PresentationParams):
+    start_time = time.time()
+    print('BODY', presentationInfo)
+    imageBucket = 'img'
+    presentation_url = presentationInfo.presentation
+    bucket = BucketManager()
+    
+    try:
+        # Загружаем презентацию
+        download_start = time.time()
+        file_stream = download_file(presentation_url)
+        if not file_stream:
+            return HTTPException(status_code=404, detail="Presentation file not found")
+        download_end = time.time()
+        print(f"Time to download presentation: {download_end - download_start:.2f} seconds")
+        
+        # Открываем презентацию
+        open_start = time.time()
+        presentation = pptx.Presentation(file_stream)
+        result_stream = BytesIO()
+        open_end = time.time()
+        print(f"Time to open presentation: {open_end - open_start:.2f} seconds")
+        
+        # Параллельно загружаем все изображения
+        cache_start = time.time()
+        print("Starting parallel image caching...")
+        
+        # Создаем задачи для параллельной загрузки
+        tasks = []
+        for item in presentationInfo.replacements:
+            if not (item.get('media_unique_name') and item.get('assets_file')):
+                return HTTPException(status_code=404, detail="Invalid replacement item")
+            tasks.append(cache_image_async(bucket, imageBucket, item))
+        
+        # Выполняем все задачи параллельно
+        cached_results = await asyncio.gather(*tasks)
+        
+        # Фильтруем результаты и создаем кэш
+        image_cache = {}
+        failed_images = []
+        
+        for item, (key, value) in zip(presentationInfo.replacements, cached_results):
+            if key is not None and value is not None:
+                image_cache[key] = value
+            else:
+                failed_images.append(item['assets_file'])
+        
+        if failed_images:
+            return HTTPException(status_code=404, detail=f"Failed to cache images: {', '.join(failed_images)}")
+        
+        cache_end = time.time()
+        print(f"Time to cache all images: {cache_end - cache_start:.2f} seconds")
+        print(f"Successfully cached {len(image_cache)} images")
+        
+        # Начинаем отсчет времени замены изображений
+        replace_start_time = time.time()
+        # Обрабатываем все замены
+        for item in presentationInfo.replacements:
+            try:
+                image_stream = image_cache[item['assets_file']]
+                image_stream.seek(0)
+                
+                item_start_time = time.time()
+                if item["type"] == "background":
+                    result_prs = replace_image_background_in_presentation_withoutResize(presentation, item['media_unique_name'], image_stream)
+                else:    
+                    result_prs = replace_image_in_presentation(presentation, item['media_unique_name'], image_stream)
+                item_end_time = time.time()
+                print(f"Time to replace image {item['media_unique_name']}: {item_end_time - item_start_time:.2f} seconds")
+                    
+                if not result_prs:
+                    return HTTPException(status_code=404, detail="Image not found")
+                    
+                presentation = result_prs
+                
+            except Exception as e:
+                print("Error during image replacement:", str(e))
+                raise HTTPException(status_code=500, detail=str(e))
+        
+        replace_end_time = time.time()
+        print(f"Total time for all image replacements: {replace_end_time - replace_start_time:.2f} seconds")
+        
+        # Сохраняем результат
+        save_start = time.time()
+        presentation.save(result_stream)
+        result_stream.seek(0)
+        save_end = time.time()
+        print(f"Time to save presentation: {save_end - save_start:.2f} seconds")
+        
+        cleanedName = replace_symbol(presentationInfo.resultFileName) + '.pptx'
+        resultName = re.sub(r'[^\x00-\x7f]',r'', cleanedName) 
+
+        end_time = time.time()
+        print(f"Total execution time: {end_time - start_time:.2f} seconds")
+        print("\nDetailed time breakdown:")
+        print(f"- Download presentation: {download_end - download_start:.2f} seconds")
+        print(f"- Open presentation: {open_end - open_start:.2f} seconds")
+        print(f"- Cache images: {cache_end - cache_start:.2f} seconds")
+        print(f"- Replace images: {replace_end_time - replace_start_time:.2f} seconds")
+        print(f"- Save presentation: {save_end - save_start:.2f} seconds")
+        print(f"- Other operations: {end_time - start_time - (download_end - download_start) - (open_end - open_start) - (cache_end - cache_start) - (replace_end_time - replace_start_time) - (save_end - save_start):.2f} seconds")
+
+        return StreamingResponse(
+            BytesIO(result_stream.read()), 
+            media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation', 
+            headers={'Content-Disposition': f'attachment; filename="{resultName}"'}
+        )
+    finally:
+        # Очищаем кэш и освобождаем память
+        if 'image_cache' in locals():
+            for stream in image_cache.values():
+                stream.close()
+            image_cache.clear()
+        print("Memory cleared: image cache has been freed")
 
 
-
+                                 
 
 class PresentationsParams(BaseModel):
     presentations: List[PresentationParams]
@@ -487,120 +670,12 @@ async def download_file_async(url: str) -> BytesIO:
                 raise HTTPException(status_code=404, detail="Presentation file not found")
             return BytesIO(await response.read())
 
-async def process_single_presentation(presentationInfo: PresentationParams):
-    try:
-        print('BODY', presentationInfo)
-        imageBucket = 'img'
-        presentation_url = presentationInfo.presentation
-        bucket = BucketManager()
-        file_stream = await download_file_async(presentation_url)
-        if not file_stream:
-            raise HTTPException(status_code=404, detail="Presentation file not found")
-
-        presentation = pptx.Presentation(file_stream)
-        result_stream = BytesIO()
-        print('FIND PRESENTATION', presentationInfo)
-        for item in presentationInfo.replacements:
-            if item.get('media_unique_name') and item.get('assets_file'):
-                if bucket.file_exists(imageBucket, item["assets_file"]):
-                    image = bucket.getObjectBody(imageBucket + '/' + item['assets_file'])
-                    if not image:
-                        raise HTTPException(status_code=404, detail="Image not found")
-                    byteImgIO = BytesIO(image)
-                    byteImgIO.seek(0)
-                    with byteImgIO as image_stream:
-                        if item["type"] == "background":
-                            result_prs = replace_image_background_in_presentation_withoutResize(presentation, item['media_unique_name'], image_stream)
-                        else:
-                            result_prs = replace_image_in_presentation(presentation, item['media_unique_name'], image_stream)
-                        if not result_prs:
-                            raise HTTPException(status_code=404, detail="Image not found")
-                        else:
-                            presentation = result_prs
-            else:
-                raise HTTPException(status_code=404, detail="Invalid replacement item")
-
-        presentation.save(result_stream)
-        result_stream.seek(0)
-        cleanedName = replace_symbol(presentationInfo.resultFileName) + '.pptx'
-        resultName = re.sub(r'[^\x00-\x7f]', r'', cleanedName)
-        folder = 'tests/'
-        return bucket.saveFileToFolderAndGetPublicUrl(resultName, folder, result_stream.read())
-
-    except HTTPException as e:
-        print(f"Error: {e.detail}")
-        return ""
-    except Exception as e:
-        print(f"Unexpected error proccess single!: {e}")
-        return ""
 
 
 
 
 
 
-@app.post("/presentation/loadListPresentationsToBucketUseUrl")
-async def loadListPresentationsToBucketUseUrl(presentationsInfo: PresentationsParams):
-    results = []
-    for presentationInfo in presentationsInfo.presentations:
-        try:
-            public_url = await process_single_presentation(presentationInfo)
-            results.append({"presentation": presentationInfo.resultFileName, "url": public_url})
-        except HTTPException as e:
-            results.append({"presentation": presentationInfo.resultFileName, "error": e.detail})
-    
-    return results
 
 
 
-
-#add model for body params
-class ChangePackgroundParams(BaseModel):
-    presentation: str
-    #replacemnt array object media_unique_name: string, assets_file: string
-    background: str
-    oldImage: str
-    newImage: str
-
-@app.post("presentation/changeBackgroundInSlideAndReturnPresentation")
-async def changeBackgroundInSlideAndReturnPresentation (presentationInfo: ChangePackgroundParams):
-    print('START REPLACE IMAGE', presentationInfo)
-    templatesBucket = 'pptx'
-    imageBucket = 'img'
-    presentation_name = presentationInfo.presentation
-    bucket = BucketManager()
-    
-    if bucket.file_exists(templatesBucket, presentation_name):
-        file = bucket.getObjectBody(templatesBucket + '/' + presentation_name)
-        file_stream = BytesIO(file)
-        presentation = pptx.Presentation(file_stream)
-        newName = presentationInfo.resultFileName + '.pptx'
-
-        result_stream = BytesIO()  
-        presentation.save(result_stream)
-        result_stream.seek(0)
-        cleanedName = replace_symbol(presentationInfo.resultFileName) + '.pptx'
-        resultName = re.sub(r'[^\x00-\x7f]',r'', cleanedName) 
-        #print("RESULT CLEANED", resultName);
-        return StreamingResponse(BytesIO(result_stream.read()), media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation', headers={'Content-Disposition': f'attachment; filename="{newName}"'})
-
-
-
-    else:
-        return HTTPException(status_code=404, detail="Presentation file not found")
-
-
-#set background to slides prs
-
-
-
-
-#return presentation by name
-@app.get("/presentation/getPresentation")
-async def get_presentation(name: str):
-    bucket = BucketManager()
-    if (bucket.file_exists('pptx', name)):
-        file = bucket.getObjectBody('pptx/' + name)
-        return StreamingResponse(BytesIO(file), media_type='application/vnd.openxmlformats-officedocument.presentationml.presentation', headers={'Content-Disposition': f'attachment; filename="{name}"'})
-    else:
-        return HTTPException(status_code=404, detail="File not found")

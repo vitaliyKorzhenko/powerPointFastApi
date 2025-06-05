@@ -18,22 +18,35 @@ class BucketManager:
         configPath = 'config.ini'
         config = configparser.ConfigParser()
         config.read(configPath)
-        print(config.sections())
+        print('======FINIST READ CONFIG FILE =======', config.sections())
         #get data for aws configuration
         self.aws_access_key_id = os.getenv('AWS_ACCESS_KEY_ID')
         self.aws_secret_access_key = os.getenv('AWS_SECRET_ACCESS_KEY')
         self.aws_region = os.getenv('AWS_REGION')
+        
+        print('======AWS CREDENTIALS=======')
+        print('Access Key ID:', self.aws_access_key_id)
+        print('Secret Key:', '***' if self.aws_secret_access_key else None)
+        print('Region:', self.aws_region)
+        
         #set bucket name
         self.bucket_name = config['s3']['bucket']
+        print('======FINIST SET BUCKET NAME =======', self.bucket_name)
         #add to os environment credentials
         os.environ['AWS_ACCESS_KEY_ID'] = self.aws_access_key_id
         os.environ['AWS_SECRET_ACCESS_KEY'] = self.aws_secret_access_key
+        print('======FINIST SET AWS DEFAULT REGION =======', self.aws_region)
         os.environ['AWS_DEFAULT_REGION'] = self.aws_region
         os.environ['AWS_REGION'] = self.aws_region
+        print('======FINIST SET ENVIRONMENT VARIABLES =======', self.aws_access_key_id, self.aws_secret_access_key, self.aws_region)
         #create s3 resource
-        self.s3 = boto3.resource('s3', region_name=self.aws_region)
-        self.bucket = self.s3.Bucket(self.bucket_name)
-        print(self.bucket_name)
+        try:
+            self.s3 = boto3.resource('s3', region_name=self.aws_region)
+            self.bucket = self.s3.Bucket(self.bucket_name)
+            print('======FINIST CREATE BUCKET RESOURCE =======', self.bucket_name)
+        except Exception as e:
+            print('======ERROR CREATING S3 RESOURCE=======', str(e))
+            raise
     
     def get_all_objects(self):
         return [obj.key for obj in self.bucket.objects.all()]
