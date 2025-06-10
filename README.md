@@ -1,3 +1,10 @@
+# Как сейчас запустил (запустить старый сервак)
+
+source venv/bin/activate
+python3 -m pip install -r requirements.txt (заходим вэтот режим обновляем пакеты)
+nohup uvicorn main:app --host 0.0.0.0 --port 8000 &
+
+
 # powerPointFastApi
 git clone project
 
